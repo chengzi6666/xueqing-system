@@ -757,7 +757,7 @@ async function handleImagesUpload(event) {
         
         if (uploadSuccess) {
             uploadSuccessCount++;
-            // 将新上传的图片添加到全局图片列表
+            // 将新上传的图片添加到全局图片列表（无论是否识别成功都保留）
             if (!imagesList.includes(fileName)) {
                 imagesList.push(fileName);
             }
@@ -772,11 +772,11 @@ async function handleImagesUpload(event) {
                     results.push({ fileName, success: true, message: matched });
                 } else {
                     unmatchedCount++;
-                    results.push({ fileName, success: false, message: '未找到匹配的讲次' });
+                    results.push({ fileName, success: false, message: '未找到匹配的讲次，但图片已保存到选择列表' });
                 }
             } else {
                 unmatchedCount++;
-                results.push({ fileName, success: false, message: '无法识别文件名格式' });
+                results.push({ fileName, success: false, message: '无法识别文件名格式，但图片已保存到选择列表' });
             }
         } else {
             results.push({ fileName, success: false, message: errorMsg ? `上传失败: ${errorMsg}` : '上传失败' });
