@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学员学习报告系统 - 开发者端</title>
+    <link rel="stylesheet" href="developer.css?v=5.1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.5.0/cloudbase.full.js"></script>
+    <script src="developer.js?v=5.1.0"></script>
+</head>
+<body>
+    <div class="login-page" id="login-page">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🔧 开发者入口</h1>
+                <p>请输入密码进入管理后台</p>
+            </div>
+            <div class="login-form">
+                <input type="password" id="password-input" placeholder="请输入密码" onkeyup="checkEnter(event)">
+                <button class="login-btn" onclick="login()">登录</button>
+                <p class="error-message" id="error-message"></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="developer-system" id="developer-system" style="display: none;">
+        <header class="header">
+            <div class="header-left">
+                <h1>🔧 开发者管理系统</h1>
+            </div>
+            <div class="header-right">
+                <span class="version-info">当前版本: <span id="current-version">v1.0.0</span></span>
+                <button class="logout-btn" onclick="logout()">退出登录</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <button class="nav-btn active" data-section="outline">课程大纲管理</button>
+                <button class="nav-btn" data-section="images">重点图片管理</button>
+                <button class="nav-btn" data-section="versions">版本历史</button>
+                <button class="nav-btn" data-section="settings">系统设置</button>
+            </div>
+
+            <div class="content-area">
+                <div class="section-content" id="section-outline">
+                    <div class="section-header">
+                        <h2>课程大纲管理</h2>
+                        <div class="header-actions">
+                            <div class="subject-tabs">
+                                <button class="tab-btn active" data-subject="math">数学</button>
+                                <button class="tab-btn" data-subject="chinese">语文</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="level-selector">
+                        <button class="level-btn active" data-level="L1">L1</button>
+                        <button class="level-btn" data-level="L2">L2</button>
+                        <button class="level-btn" data-level="L3">L3</button>
+                        <button class="level-btn" data-level="L4">L4</button>
+                    </div>
+
+                    <div class="lesson-tabs">
+                        <button class="lesson-btn active" data-lesson="1">第1讲</button>
+                        <button class="lesson-btn" data-lesson="2">第2讲</button>
+                        <button class="lesson-btn" data-lesson="3">第3讲</button>
+                        <button class="lesson-btn" data-lesson="4">第4讲</button>
+                        <button class="lesson-btn" data-lesson="5">第5讲</button>
+                    </div>
+
+                    <div class="editor-container">
+                        <div class="form-group">
+                            <label>课程标题</label>
+                            <input type="text" id="lesson-title" placeholder="请输入课程标题">
+                        </div>
+
+                        <div class="form-group">
+                            <label>课程重点（每行一个）</label>
+                            <textarea id="key-points" placeholder="每行输入一个课程重点"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>课程总结</label>
+                            <textarea id="lesson-summary" placeholder="请输入课程总结内容"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>重点图片</label>
+                            <div class="image-selector">
+                                <select id="image-select">
+                                    <option value="">选择图片</option>
+                                </select>
+                                <img id="preview-image" src="" alt="预览" style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="upload-section">
+                        <h3>批量导入大纲</h3>
+                        <label class="upload-btn">
+                            <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv">
+                            <span>上传Excel或CSV文件</span>
+                        </label>
+                        <p class="upload-hint">支持格式：.xlsx / .xls / .csv</p>
+                    </div>
+
+                    <div class="upload-section">
+                        <h3>一键上传图片并匹配讲次</h3>
+                        <p class="upload-hint">支持的图片命名格式：</p>
+                        <ul class="format-list">
+                            <li>数学-L1-第1讲.png</li>
+                            <li>数学-L1-1.png</li>
+                            <li>数学-第1讲.png</li>
+                            <li>数学L11.png / 数学1.png</li>
+                            <li>数学-L1.png</li>
+                        </ul>
+                        <label class="upload-btn secondary">
+                            <input type="file" id="images-upload" accept=".png,.jpg,.jpeg" multiple>
+                            <span>上传图片文件</span>
+                        </label>
+                        <div id="upload-result" class="upload-result"></div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="save-btn" onclick="saveOutline()">保存当前讲次</button>
+                        <button class="publish-btn" onclick="publishChanges()">发布更新</button>
+                    </div>
+                </div>
+
+                <div class="section-content" id="section-images" style="display: none;">
+                    <div class="section-header">
+                        <h2>重点图片管理</h2>
+                        <div class="header-actions">
+                            <div class="subject-tabs">
+                                <button class="tab-btn active" data-subject="math">数学</button>
+                                <button class="tab-btn" data-subject="chinese">语文</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="level-selector">
+                        <button class="level-btn active" data-level="L1">L1</button>
+                        <button class="level-btn" data-level="L2">L2</button>
+                        <button class="level-btn" data-level="L3">L3</button>
+                        <button class="level-btn" data-level="L4">L4</button>
+                    </div>
+
+                    <div class="images-grid" id="images-grid">
+                        <div class="image-card upload-card">
+                            <div class="image-placeholder" onclick="triggerImagesUpload()">
+                                <span>📤</span>
+                                <p>上传图片</p>
+                            </div>
+                            <input type="file" id="images-grid-upload" accept=".png,.jpg,.jpeg" multiple style="display: none;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-content" id="section-versions" style="display: none;">
+                    <div class="section-header">
+                        <h2>版本历史</h2>
+                    </div>
+
+                    <div class="versions-list" id="versions-list">
+                        <div class="version-card">
+                            <div class="version-header">
+                                <span class="version-tag">v1.0.0</span>
+                                <span class="version-date">2026-06-06 10:00:00</span>
+                            </div>
+                            <div class="version-info">
+                                <span class="subject-badge">数学 + 语文</span>
+                                <p class="version-description">初始版本发布</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-content" id="section-settings" style="display: none;">
+                    <div class="section-header">
+                        <h2>系统设置</h2>
+                    </div>
+
+                    <div class="settings-form">
+                        <div class="form-group">
+                            <label>开发者密码</label>
+                            <input type="password" id="dev-password" placeholder="请输入新密码">
+                        </div>
+
+                        <div class="form-group">
+                            <label>默认老师姓名</label>
+                            <input type="text" id="default-teacher-name" placeholder="请输入默认老师姓名">
+                        </div>
+
+                        <div class="form-group">
+                            <label>默认老师头像</label>
+                            <div class="avatar-upload-container">
+                                <input type="file" id="teacher-avatar-upload" accept=".png,.jpg,.jpeg" style="display: none;">
+                                <button class="upload-btn small" onclick="document.getElementById('teacher-avatar-upload').click()">上传头像</button>
+                                <input type="text" id="default-teacher-avatar" placeholder="头像文件名" readonly>
+                                <img id="avatar-preview" src="" alt="头像预览" style="display: none; max-width: 100px; max-height: 100px; margin-top: 10px;">
+                            </div>
+                        </div>
+
+                        <button class="save-btn" onclick="saveSettings()">保存设置</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="publish-modal">
+            <div class="modal-content">
+                <span class="close-btn" onclick="closePublishModal()">&times;</span>
+                <h2>发布更新</h2>
+                <div class="form-group">
+                    <label>版本说明</label>
+                    <textarea id="version-description" placeholder="请输入本次更新的说明"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>更新范围</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="update-math" checked> 数学大纲</label>
+                        <label><input type="checkbox" id="update-chinese" checked> 语文大纲</label>
+                    </div>
+                </div>
+                <button class="publish-btn" onclick="confirmPublish()">确认发布</button>
+            </div>
+        </div>
+
+        <div class="modal" id="image-preview-modal">
+            <div class="modal-content large">
+                <span class="close-btn" onclick="closeImagePreview()">&times;</span>
+                <img id="preview-full-image" src="" alt="图片预览">
+                <p id="preview-image-name"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            init();
+        });
+    </script>
+</body>
+</html>

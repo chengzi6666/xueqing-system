@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学员学习报告系统 - 老师端</title>
+    <link rel="stylesheet" href="teacher.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.5.0/cloudbase.full.js"></script>
+</head>
+<body>
+    <div class="teacher-system">
+        <header class="header">
+            <div class="header-left">
+                <img src="头像1.png" alt="老师头像" class="teacher-avatar" id="teacher-avatar">
+                <div class="teacher-info">
+                    <h1 class="title">学员学习报告系统</h1>
+                    <p class="teacher-name" id="teacher-name">王老师</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="subject-switch">
+                    <button class="subject-btn active" data-subject="math">数学</button>
+                    <button class="subject-btn" data-subject="chinese">语文</button>
+                </div>
+                <button class="edit-teacher-btn" onclick="editTeacherInfo()">编辑信息</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="section">
+                    <h3>课程选择</h3>
+                    <div class="level-selector">
+                        <button class="level-btn active" data-level="L1">L1</button>
+                        <button class="level-btn" data-level="L2">L2</button>
+                        <button class="level-btn" data-level="L3">L3</button>
+                        <button class="level-btn" data-level="L4">L4</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>评语模式</h3>
+                    <div class="mode-selector">
+                        <button class="mode-btn active" data-mode="single">单讲评语</button>
+                        <button class="mode-btn" data-mode="overall">总体评语</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>报告标题设置</h3>
+                    <div class="title-editor">
+                        <input type="text" id="report-title-input" class="title-input" placeholder="请输入报告标题" value="语文 L1 - 综合学习报告">
+                        <button class="apply-title-btn" onclick="applyTitleToAll()">一键应用到所有报告</button>
+                    </div>
+                    <p class="option-hint">标题将应用到所有生成的报告卡片中</p>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">
+                        <h3>大纲版本选择</h3>
+                        <span class="section-arrow">▼</span>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="version-select" onchange="selectVersion()">
+                            <option value="">选择版本</option>
+                        </select>
+                        <button class="action-btn" onclick="loadVersionHistory()">🔄</button>
+                    </div>
+                    <p class="option-hint" id="version-info">当前版本: v1.0.0</p>
+                </div>
+
+                <div class="section">
+                    <h3>学员搜索</h3>
+                    <div class="search-wrapper">
+                        <input type="text" id="student-search" class="search-input" placeholder="输入学员姓名搜索..." onkeyup="searchStudents()">
+                        <button class="search-btn" onclick="searchStudents()">🔍</button>
+                    </div>
+                    <p class="option-hint">搜索结果将实时过滤报告列表</p>
+                </div>
+
+                <div class="section">
+                    <h3>学员名称设置</h3>
+                    <div class="name-option">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use-short-name" onchange="toggleShortName()">
+                            <span>学员名称只取后两个字</span>
+                        </label>
+                        <p class="option-hint">勾选后，学员名称大于2个字时只显示后两个字</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>上传数据</h3>
+                    <div class="upload-area">
+                        <div class="upload-box" id="upload-box">
+                            <input type="file" id="csv-file" accept=".csv" multiple onchange="handleFileUpload(event)">
+                            <div class="upload-content">
+                                <span class="upload-icon">📁</span>
+                                <p>点击或拖拽上传CSV文件</p>
+                                <p class="hint">支持选择多个文件</p>
+                            </div>
+                        </div>
+                        <div class="uploaded-files" id="uploaded-files"></div>
+                    </div>
+                </div>
+
+                <button class="generate-btn" onclick="generateReports()">生成报告</button>
+            </div>
+
+            <div class="content-area">
+                <div class="toolbar">
+                    <h2>学员学情报告</h2>
+                    <button class="download-all-btn" onclick="downloadAllReports()">📥 一键下载所有报告</button>
+                </div>
+
+                <div class="reports-panel">
+                    <div class="reports-container" id="reports-container">
+                        <div class="empty-state">
+                            <span>📝</span>
+                            <p>请上传CSV文件并点击生成报告</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="teacher-modal">
+            <div class="modal-content">
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+                <h2>编辑老师信息</h2>
+                <div class="form-group">
+                    <label>老师姓名</label>
+                    <input type="text" id="teacher-name-input" value="王老师">
+                </div>
+                <div class="form-group">
+                    <label>老师头像</label>
+                    <div class="avatar-upload-box">
+                        <img src="头像1.png" alt="预览头像" class="avatar-preview" id="avatar-preview">
+                        <div class="avatar-upload-content">
+                            <input type="file" id="avatar-file" accept="image/*" onchange="handleAvatarUpload(event)">
+                            <span class="upload-icon">📷</span>
+                            <p>点击上传头像</p>
+                        </div>
+                    </div>
+                    <div class="avatar-crop-controls" id="avatar-crop-controls" style="display: none;">
+                        <div class="crop-preview-container">
+                            <div class="crop-preview-box" id="crop-preview-box">
+                                <img src="" alt="剪裁预览" class="crop-preview-image" id="crop-preview-image">
+                                <div class="crop-overlay" id="crop-overlay"></div>
+                            </div>
+                        </div>
+                        <div class="crop-controls">
+                            <label>缩放比例</label>
+                            <input type="range" id="crop-scale" min="1" max="3" step="0.1" value="1" onchange="updateCropPreview()">
+                            <label>水平偏移</label>
+                            <input type="range" id="crop-offset-x" min="0" max="100" step="1" value="50" onchange="updateCropPreview()">
+                            <label>垂直偏移</label>
+                            <input type="range" id="crop-offset-y" min="0" max="100" step="1" value="50" onchange="updateCropPreview()">
+                        </div>
+                        <button class="apply-crop-btn" onclick="applyCrop()">应用剪裁</button>
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveTeacherInfo()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="teacher.js"></script>
+</body>
+</html>
