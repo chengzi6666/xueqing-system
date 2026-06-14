@@ -2181,7 +2181,9 @@ function createReportCard(cardData) {
     // 构建课程图片HTML
     let courseImageHtml = '';
     if (lessonData?.image) {
-        courseImageHtml = `<img src="images/${lessonData.image}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
+        // 对中文文件名进行URL编码
+        const encodedImage = encodeURIComponent(lessonData.image);
+        courseImageHtml = `<img src="images/${encodedImage}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
     }
     
     return `

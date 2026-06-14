@@ -43,9 +43,9 @@ const storage = multer.diskStorage({
         cb(null, path.join(__dirname, '../images'));
     },
     filename: function (req, file, cb) {
-        const ext = path.extname(file.originalname);
-        const filename = 'avatar_' + Date.now() + ext;
-        cb(null, filename);
+        // 保留原始文件名（支持中文文件名）
+        const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        cb(null, originalName);
     }
 });
 
