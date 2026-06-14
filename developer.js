@@ -671,10 +671,41 @@ async function handleImagesUpload(event) {
     for (const file of files) {
         const fileName = file.name;
         
-        // 上传图片到云存储
+        // 上传图片到后端API（优先使用）
         let uploadSuccess = false;
         let errorMsg = '';
-        if (cloudbaseApp) {
+        
+        // 优先使用后端API上传
+        if (API_BASE_URL) {
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+                const response = await fetch(`${API_BASE_URL}/upload-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    // 保存返回的URL到映射表
+                    if (result.url) {
+                        imageUrlMap[fileName] = result.url;
+                    } else {
+                        // 如果没有返回URL，使用本地路径
+                        imageUrlMap[fileName] = `images/${fileName}`;
+                    }
+                    uploadSuccess = true;
+                    console.log(`图片 ${fileName} 上传到后端成功`);
+                } else {
+                    console.error(`图片 ${fileName} 后端上传失败，尝试其他方案`);
+                }
+            } catch (e) {
+                errorMsg = e.message || '后端上传失败';
+                console.error(`图片 ${fileName} 后端上传失败:`, e);
+            }
+        }
+        
+        // 如果后端上传失败，尝试云存储（仅在云开发环境可用时）
+        if (!uploadSuccess && cloudbaseApp && typeof cloudbaseApp.storage === 'function') {
             try {
                 console.log(`正在上传图片 ${fileName} 到云存储...`);
                 const storage = cloudbaseApp.storage();
@@ -695,69 +726,34 @@ async function handleImagesUpload(event) {
                 imageUrlMap[fileName] = tempFileURL;
                 
                 uploadSuccess = true;
+                errorMsg = '';
             } catch (e) {
                 errorMsg = e.message || '云存储上传失败';
                 console.error(`图片 ${fileName} 云存储上传失败:`, e);
-                // 尝试备用方案：将图片转为base64保存到数据库
-                try {
-                    console.log(`尝试使用base64方式保存图片 ${fileName}...`);
-                    const base64Url = await saveImageAsBase64(file, fileName);
-                    // 保存base64 URL到映射表
-                    imageUrlMap[fileName] = base64Url;
-                    uploadSuccess = true;
-                    errorMsg = '';
-                    console.log(`图片 ${fileName} base64保存成功`);
-                } catch (base64Error) {
-                    console.error(`图片 ${fileName} base64保存也失败:`, base64Error);
-                    uploadFailCount++;
-                }
             }
-        } else {
-            // 本地环境，上传到后端API或使用备用方案
-            if (API_BASE_URL) {
-                try {
-                    const formData = new FormData();
-                    formData.append('image', file);
-                    const response = await fetch(`${API_BASE_URL}/upload-image`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    if (response.ok) {
-                        const result = await response.json();
-                        // 保存返回的URL到映射表
-                        if (result.url) {
-                            imageUrlMap[fileName] = result.url;
-                        } else {
-                            // 如果没有返回URL，使用本地路径
-                            imageUrlMap[fileName] = `images/${fileName}`;
-                        }
-                        uploadSuccess = true;
-                    } else {
-                        // 尝试备用方案：保存到本地存储
-                        const base64Url = await saveImageAsBase64(file, fileName);
-                        imageUrlMap[fileName] = base64Url;
-                        uploadSuccess = true;
-                    }
-                } catch (e) {
-                    errorMsg = e.message || '上传请求失败';
-                    console.error(`图片 ${fileName} 上传失败:`, e);
-                    // 尝试备用方案：保存到本地存储
-                    try {
-                        const base64Url = await saveImageAsBase64(file, fileName);
-                        imageUrlMap[fileName] = base64Url;
-                        uploadSuccess = true;
-                        errorMsg = '';
-                    } catch (base64Error) {
-                        console.error(`图片 ${fileName} base64保存也失败:`, base64Error);
-                        uploadFailCount++;
-                    }
-                }
-            } else {
-                // 本地开发环境，直接使用本地路径（图片已存在于images文件夹）
-                console.log(`本地环境：图片 ${fileName} 直接使用本地路径`);
-                imageUrlMap[fileName] = `images/${fileName}`;
+        }
+        
+        // 如果以上都失败，尝试base64方案
+        if (!uploadSuccess) {
+            try {
+                console.log(`尝试使用base64方式保存图片 ${fileName}...`);
+                const base64Url = await saveImageAsBase64(file, fileName);
+                // 保存base64 URL到映射表
+                imageUrlMap[fileName] = base64Url;
                 uploadSuccess = true;
+                errorMsg = '';
+                console.log(`图片 ${fileName} base64保存成功`);
+            } catch (base64Error) {
+                console.error(`图片 ${fileName} base64保存也失败:`, base64Error);
+                uploadFailCount++;
             }
+        }
+        
+        // 纯本地环境，直接使用本地路径
+        if (!uploadSuccess) {
+            console.log(`本地环境：图片 ${fileName} 直接使用本地路径`);
+            imageUrlMap[fileName] = `images/${fileName}`;
+            uploadSuccess = true;
         }
         
         if (uploadSuccess) {

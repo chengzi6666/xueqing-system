@@ -1,16 +1,40 @@
 {
   "history": [
     {
-      "version": "v1.0.5",
-      "date": "2026-06-11",
-      "description": "语文L3第2讲笔记更新",
-      "timestamp": "2026-06-11T10:22:11.659Z"
+      "version": "v5.0.1",
+      "date": "2026-06-14",
+      "description": "测试版本发布",
+      "timestamp": "2026-06-14T10:00:00.000Z"
     },
     {
-      "version": "v1.0.4",
+      "version": "v5.0.0",
+      "date": "2026-06-13",
+      "description": "第五版更新 - 修复图片上传和预览问题",
+      "timestamp": "2026-06-13T10:00:00.000Z"
+    },
+    {
+      "version": "v4.0.0",
+      "date": "2026-06-10",
+      "description": "第四版更新 - 优化报告生成性能",
+      "timestamp": "2026-06-10T10:00:00.000Z"
+    },
+    {
+      "version": "v3.0.0",
       "date": "2026-06-08",
-      "description": "语文测试3",
-      "timestamp": "2026-06-08T13:08:57.962Z"
+      "description": "第三版更新 - 增加总体评语功能",
+      "timestamp": "2026-06-08T10:00:00.000Z"
+    },
+    {
+      "version": "v2.0.0",
+      "date": "2026-06-07",
+      "description": "第二版更新 - 增加学科选择功能",
+      "timestamp": "2026-06-07T10:00:00.000Z"
+    },
+    {
+      "version": "v1.0.0",
+      "date": "2026-06-06",
+      "description": "初始版本 - 创建数学和语文课程大纲",
+      "timestamp": "2026-06-06T10:00:00.000Z"
     }
   ]
 }
