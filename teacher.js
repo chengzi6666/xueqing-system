@@ -418,7 +418,26 @@ async function loadVersionHistory() {
     if (select) {
         select.innerHTML = '<option value="">选择版本</option>';
         
-        versionHistory.forEach(v => {
+        // 尝试从后端API获取最新版本历史
+        if (API_BASE_URL) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/version`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.history && data.history.length > 0) {
+                        versionHistory = data;
+                        console.log('从后端获取到版本历史:', data.history.length, '个版本');
+                    }
+                }
+            } catch (error) {
+                console.warn('从后端获取版本历史失败，使用本地缓存:', error);
+            }
+        }
+        
+        // 如果没有从后端获取到数据，使用硬编码的默认版本
+        const historyList = versionHistory.history || versionHistory;
+        
+        historyList.forEach(v => {
             const option = document.createElement('option');
             option.value = v.version;
             option.textContent = `${v.version} - ${v.date} - ${v.description || '无说明'}`;
@@ -426,7 +445,7 @@ async function loadVersionHistory() {
         });
     }
     
-    console.log('版本历史加载完成，共', versionHistory.length, '个版本');
+    console.log('版本历史加载完成，共', (versionHistory.history || versionHistory).length, '个版本');
 }
 
 async function selectVersion() {
