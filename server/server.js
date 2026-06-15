@@ -129,7 +129,6 @@ app.use('/images', (req, res, next) => {
     }
 });
 app.use(express.static(path.join(__dirname, '..'), {
-    extensions: ['html', 'json', 'js', 'css'],
     index: 'index.html'
 }));
 
