@@ -484,6 +484,21 @@ app.get('/api/image/:filename', (req, res) => {
         
         let filePath = path.join(imagesDir, filename);
         
+        // 如果文件不存在，尝试查找同名但不同扩展名的文件
+        if (!fs.existsSync(filePath)) {
+            // 提取文件名（不含扩展名）
+            const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+            const possibleExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+            
+            for (const ext of possibleExts) {
+                const altPath = path.join(imagesDir, nameWithoutExt + ext);
+                if (fs.existsSync(altPath)) {
+                    filePath = altPath;
+                    break;
+                }
+            }
+        }
+        
         if (!fs.existsSync(filePath)) {
             filePath = path.join(publicImagesDir, filename);
         }
