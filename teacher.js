@@ -93,7 +93,7 @@ async function loadAvailableImages() {
                     if (parsed) {
                         availableImages.push({
                             filename: filename,
-                            src: `api/image/${encodeURIComponent(filename)}`,
+                            src: `${API_BASE_URL}/image/${encodeURIComponent(filename)}`,
                             subject: parsed.subject,
                             level: parsed.level,
                             lecture: parsed.lecture,
@@ -135,7 +135,7 @@ async function loadAvailableImages() {
                         const filename = `${subject}-${level}-第${i}讲.${ext}`;
                         availableImages.push({
                             filename: filename,
-                            src: `api/image/${encodeURIComponent(filename)}`,
+                            src: `${API_BASE_URL}/image/${encodeURIComponent(filename)}`,
                             subject: subject,
                             level: level,
                             lecture: i,
@@ -294,14 +294,11 @@ function getAvatarUrl(avatar) {
     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
         return avatar;
     }
+    let filename = avatar;
     if (avatar.startsWith('images/')) {
-        const filename = avatar.replace('images/', '');
-        return `api/image/${encodeURIComponent(filename)}`;
+        filename = avatar.replace('images/', '');
     }
-    if (avatar.startsWith('avatar_')) {
-        return `api/image/${encodeURIComponent(avatar)}`;
-    }
-    return `api/image/${encodeURIComponent(avatar)}`;
+    return `${API_BASE_URL}/image/${encodeURIComponent(filename)}`;
 }
 
 // 图片上传相关函数

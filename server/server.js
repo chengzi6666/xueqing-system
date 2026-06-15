@@ -363,9 +363,15 @@ app.post('/api/version', (req, res) => {
         fs.writeFileSync(VERSION_FILE, JSON.stringify(versionHistory, null, 2));
         
         // 同时更新配置中的当前版本
-        const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        let configData = {};
+        try {
+            configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        } catch (e) {
+            console.log('配置文件不存在，创建新配置');
+        }
         configData.currentVersion = versionData.version;
         configData.lastUpdate = now;
+        configData.lastPublishTime = new Date().toLocaleString('zh-CN');
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configData, null, 2));
         
         console.log(`[${now}] 新版本 ${versionData.version} 已发布`);
