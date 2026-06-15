@@ -350,6 +350,37 @@ app.get('/api/version/:version/outline', (req, res) => {
     }
 });
 
+// 获取图片列表接口
+app.get('/api/images', (req, res) => {
+    try {
+        const imagesDir = path.join(__dirname, '../images');
+        const publicImagesDir = path.join(__dirname, 'public', 'images');
+        
+        let imageFiles = [];
+        
+        // 从主图片目录读取
+        if (fs.existsSync(imagesDir)) {
+            imageFiles = fs.readdirSync(imagesDir).filter(file => 
+                file.match(/\.(png|jpg|jpeg|gif|webp)$/i)
+            );
+        }
+        
+        // 如果主目录为空，从public目录读取
+        if (imageFiles.length === 0 && fs.existsSync(publicImagesDir)) {
+            imageFiles = fs.readdirSync(publicImagesDir).filter(file => 
+                file.match(/\.(png|jpg|jpeg|gif|webp)$/i)
+            );
+        }
+        
+        console.log(`[API] 获取图片列表，共 ${imageFiles.length} 张图片`);
+        
+        res.json(imageFiles);
+    } catch (error) {
+        console.error('获取图片列表失败:', error);
+        res.status(500).json({ error: '获取图片列表失败' });
+    }
+});
+
 // 图片上传接口
 app.post('/api/upload-image', upload.array('images', 10), (req, res) => {
     try {
