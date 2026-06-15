@@ -11,6 +11,11 @@ let teacherAvatarDataURL = '';
 let originalAvatarImage = null;
 window.useShortName = false; // 是否只取学员名称的后两个字
 
+// 版本更新相关
+let currentVersion = '';
+let updateCheckInterval = null;
+const UPDATE_CHECK_INTERVAL = 30000; // 30秒检查一次更新
+
 // 图片文件名解析相关全局变量
 let availableImages = []; // 存储所有可用图片
 let selectedImages = []; // 存储用户选择的图片
@@ -554,6 +559,118 @@ async function init() {
     await loadAvailableImages();
     loadImageSelectionPreference();
     renderImageSelectorList();
+    
+    // 启动定期检查更新
+    startUpdateChecker();
+}
+
+// 检查更新
+async function checkForUpdate() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/check-update?version=${encodeURIComponent(currentVersion)}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.hasUpdate && data.currentVersion !== currentVersion) {
+                // 发现新版本，提示用户刷新
+                showUpdateNotification(data.currentVersion);
+            }
+        }
+    } catch (error) {
+        console.log('检查更新失败:', error);
+    }
+}
+
+// 显示更新通知
+function showUpdateNotification(newVersion) {
+    const notification = document.createElement('div');
+    notification.className = 'update-notification';
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-icon">🔄</span>
+            <span class="notification-text">发现新版本 ${newVersion}！</span>
+            <button class="notification-btn" onclick="refreshPage()">立即刷新</button>
+        </div>
+    `;
+    document.body.appendChild(notification);
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .update-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .notification-icon {
+            font-size: 20px;
+        }
+        .notification-text {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .notification-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .notification-btn:hover {
+            transform: scale(1.05);
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// 刷新页面
+function refreshPage() {
+    window.location.reload(true);
+}
+
+// 启动更新检查器
+function startUpdateChecker() {
+    // 立即检查一次
+    checkForUpdate();
+    
+    // 设置定期检查
+    if (updateCheckInterval) {
+        clearInterval(updateCheckInterval);
+    }
+    updateCheckInterval = setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL);
+}
+
+// 停止更新检查器
+function stopUpdateChecker() {
+    if (updateCheckInterval) {
+        clearInterval(updateCheckInterval);
+        updateCheckInterval = null;
+    }
 }
 
 function toggleShortName() {
@@ -651,8 +768,11 @@ async function loadData() {
         }
         console.log('配置数据加载成功:', configData);
         
+        // 保存当前版本号（用于检查更新）
+        currentVersion = configData.currentVersion || 'v1.0.0';
+        
         // 更新版本信息显示
-        document.getElementById('version-info').textContent = '当前版本: ' + (configData.currentVersion || 'v1.0.0');
+        document.getElementById('version-info').textContent = '当前版本: ' + currentVersion;
         
         // 加载版本历史
         await loadVersionHistory();

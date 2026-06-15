@@ -562,12 +562,19 @@ app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
 app.get('/api/check-update', (req, res) => {
     try {
         const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-        const outlineData = JSON.parse(fs.readFileSync(OUTLINE_FILE, 'utf8'));
+        
+        // 获取客户端当前版本
+        const clientVersion = req.query.version || '';
+        const serverVersion = configData.currentVersion;
+        
+        // 比较版本号，判断是否有更新
+        const hasUpdate = clientVersion !== serverVersion;
         
         res.json({
-            currentVersion: configData.currentVersion,
+            currentVersion: serverVersion,
             lastUpdate: configData.lastUpdate,
-            hasUpdate: true
+            hasUpdate: hasUpdate,
+            clientVersion: clientVersion
         });
     } catch (error) {
         res.status(500).json({ error: '检查更新失败' });
