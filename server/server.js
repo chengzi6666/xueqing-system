@@ -404,6 +404,7 @@ app.get('/api/images', (req, res) => {
     try {
         const imagesDir = path.join(__dirname, '../images');
         const publicImagesDir = path.join(__dirname, 'public', 'images');
+        const deployTempDir = path.join(__dirname, '../deploy_temp/images');
         
         let imageFiles = [];
         
@@ -421,12 +422,49 @@ app.get('/api/images', (req, res) => {
             );
         }
         
+        // 如果还是为空，从deploy_temp目录读取
+        if (imageFiles.length === 0 && fs.existsSync(deployTempDir)) {
+            imageFiles = fs.readdirSync(deployTempDir).filter(file => 
+                file.match(/\.(png|jpg|jpeg|gif|webp)$/i)
+            );
+        }
+        
         console.log(`[API] 获取图片列表，共 ${imageFiles.length} 张图片`);
         
         res.json(imageFiles);
     } catch (error) {
         console.error('获取图片列表失败:', error);
         res.status(500).json({ error: '获取图片列表失败' });
+    }
+});
+
+// 调试接口 - 检查服务器文件系统
+app.get('/api/debug/fs', (req, res) => {
+    try {
+        const baseDir = __dirname;
+        const imagesDir = path.join(__dirname, '../images');
+        const publicImagesDir = path.join(__dirname, 'public', 'images');
+        const deployTempDir = path.join(__dirname, '../deploy_temp/images');
+        
+        const result = {
+            baseDir: baseDir,
+            imagesDir: imagesDir,
+            publicImagesDir: publicImagesDir,
+            deployTempDir: deployTempDir,
+            imagesDirExists: fs.existsSync(imagesDir),
+            publicImagesDirExists: fs.existsSync(publicImagesDir),
+            deployTempDirExists: fs.existsSync(deployTempDir),
+            imagesDirFiles: fs.existsSync(imagesDir) ? fs.readdirSync(imagesDir).slice(0, 10) : [],
+            publicImagesDirFiles: fs.existsSync(publicImagesDir) ? fs.readdirSync(publicImagesDir).slice(0, 10) : [],
+            deployTempDirFiles: fs.existsSync(deployTempDir) ? fs.readdirSync(deployTempDir).slice(0, 10) : [],
+            imagesDirCount: fs.existsSync(imagesDir) ? fs.readdirSync(imagesDir).length : 0,
+            publicImagesDirCount: fs.existsSync(publicImagesDir) ? fs.readdirSync(publicImagesDir).length : 0,
+            deployTempDirCount: fs.existsSync(deployTempDir) ? fs.readdirSync(deployTempDir).length : 0
+        };
+        
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
