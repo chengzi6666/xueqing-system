@@ -468,6 +468,49 @@ app.get('/api/debug/fs', (req, res) => {
     }
 });
 
+// 获取单张图片数据接口
+app.get('/api/image/:filename', (req, res) => {
+    try {
+        const filename = decodeURIComponent(req.params.filename);
+        const imagesDir = path.join(__dirname, '../images');
+        const publicImagesDir = path.join(__dirname, 'public', 'images');
+        const deployTempDir = path.join(__dirname, '../deploy_temp/images');
+        
+        let filePath = path.join(imagesDir, filename);
+        
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(publicImagesDir, filename);
+        }
+        
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(deployTempDir, filename);
+        }
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: '图片不存在' });
+        }
+        
+        const ext = path.extname(filename).toLowerCase();
+        let contentType = 'image/png';
+        
+        if (ext === '.jpg' || ext === '.jpeg') {
+            contentType = 'image/jpeg';
+        } else if (ext === '.gif') {
+            contentType = 'image/gif';
+        } else if (ext === '.webp') {
+            contentType = 'image/webp';
+        }
+        
+        const imageBuffer = fs.readFileSync(filePath);
+        res.set('Content-Type', contentType);
+        res.send(imageBuffer);
+        
+    } catch (error) {
+        console.error('获取图片失败:', error);
+        res.status(500).json({ error: '获取图片失败' });
+    }
+});
+
 // 图片上传接口
 app.post('/api/upload-image', upload.array('images', 10), (req, res) => {
     try {

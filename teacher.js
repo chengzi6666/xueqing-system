@@ -88,7 +88,7 @@ async function loadAvailableImages() {
                     if (parsed) {
                         availableImages.push({
                             filename: filename,
-                            src: `images/${filename}`,
+                            src: `api/image/${encodeURIComponent(filename)}`,
                             subject: parsed.subject,
                             level: parsed.level,
                             lecture: parsed.lecture,
@@ -130,7 +130,7 @@ async function loadAvailableImages() {
                         const filename = `${subject}-${level}-第${i}讲.${ext}`;
                         availableImages.push({
                             filename: filename,
-                            src: `images/${filename}`,
+                            src: `api/image/${encodeURIComponent(filename)}`,
                             subject: subject,
                             level: level,
                             lecture: i,
@@ -290,12 +290,13 @@ function getAvatarUrl(avatar) {
         return avatar;
     }
     if (avatar.startsWith('images/')) {
-        return avatar;
+        const filename = avatar.replace('images/', '');
+        return `api/image/${encodeURIComponent(filename)}`;
     }
     if (avatar.startsWith('avatar_')) {
-        return `images/${avatar}`;
+        return `api/image/${encodeURIComponent(avatar)}`;
     }
-    return `images/${avatar}`;
+    return `api/image/${encodeURIComponent(avatar)}`;
 }
 
 // 图片上传相关函数
@@ -2202,7 +2203,7 @@ function createReportCard(cardData) {
     if (lessonData?.image) {
         // 对中文文件名进行URL编码
         const encodedImage = encodeURIComponent(lessonData.image);
-        courseImageHtml = `<img src="images/${encodedImage}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
+        courseImageHtml = `<img src="api/image/${encodedImage}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
     }
     
     return `

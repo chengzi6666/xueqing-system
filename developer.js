@@ -635,7 +635,7 @@ function getImageUrl(imgName) {
     }
     // 对中文文件名进行URL编码
     const encodedName = encodeURIComponent(imgName);
-    return `images/${encodedName}`;
+    return `api/image/${encodedName}`;
 }
 
 // 图片预览功能
