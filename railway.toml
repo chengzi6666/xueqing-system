@@ -5,3 +5,6 @@ builder = "nixpacks"
 startCommand = "npm start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
+
+[env]
+NIXPACKS_NPM_BUILD_COMMAND = "npm install && npm run prepare"

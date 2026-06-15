@@ -14,7 +14,58 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // 静态文件服务（图片和前端页面）
-app.use('/images', express.static(path.join(__dirname, '../images')));
+const imagesPath = path.join(__dirname, '../images');
+const publicImagesPath = path.join(__dirname, 'public', 'images');
+
+// 确保图片目录存在
+if (!fs.existsSync(imagesPath)) {
+    console.log(`[静态文件配置] 图片目录不存在，正在创建: ${imagesPath}`);
+    fs.mkdirSync(imagesPath, { recursive: true });
+}
+
+if (!fs.existsSync(publicImagesPath)) {
+    console.log(`[静态文件配置] public/images目录不存在，正在创建: ${publicImagesPath}`);
+    fs.mkdirSync(publicImagesPath, { recursive: true });
+}
+
+console.log(`[静态文件配置] 图片目录1: ${imagesPath}`);
+console.log(`[静态文件配置] 图片目录2: ${publicImagesPath}`);
+console.log(`[静态文件配置] 图片目录1存在: ${fs.existsSync(imagesPath)}`);
+console.log(`[静态文件配置] 图片目录2存在: ${fs.existsSync(publicImagesPath)}`);
+
+// 列出两个目录的图片
+let totalImages = 0;
+if (fs.existsSync(imagesPath)) {
+    const imageFiles = fs.readdirSync(imagesPath);
+    totalImages += imageFiles.length;
+    console.log(`[静态文件配置] 目录1图片数量: ${imageFiles.length}`);
+    if (imageFiles.length > 0) {
+        console.log(`[静态文件配置] 目录1前5个图片: ${imageFiles.slice(0, 5).join(', ')}`);
+    }
+}
+
+if (fs.existsSync(publicImagesPath)) {
+    const publicImageFiles = fs.readdirSync(publicImagesPath);
+    totalImages += publicImageFiles.length;
+    console.log(`[静态文件配置] 目录2图片数量: ${publicImageFiles.length}`);
+    if (publicImageFiles.length > 0) {
+        console.log(`[静态文件配置] 目录2前5个图片: ${publicImageFiles.slice(0, 5).join(', ')}`);
+    }
+}
+
+if (totalImages === 0) {
+    console.log('[静态文件配置] 警告：两个图片目录都为空！请确保图片文件已正确部署');
+}
+
+// 优先从主目录服务图片，如果找不到则从public目录查找
+app.use('/images', (req, res, next) => {
+    const filePath = path.join(imagesPath, req.url);
+    if (fs.existsSync(filePath)) {
+        express.static(imagesPath)(req, res, next);
+    } else {
+        express.static(publicImagesPath)(req, res, next);
+    }
+});
 app.use(express.static(path.join(__dirname, '..'), {
     extensions: ['html', 'json', 'js', 'css'],
     index: 'index.html'
