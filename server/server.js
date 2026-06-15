@@ -16,6 +16,7 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 // 静态文件服务（图片和前端页面）
 const imagesPath = path.join(__dirname, '../images');
 const publicImagesPath = path.join(__dirname, 'public', 'images');
+const deployTempPath = path.join(__dirname, '../deploy_temp/images');
 
 // 确保图片目录存在
 if (!fs.existsSync(imagesPath)) {
@@ -30,40 +31,85 @@ if (!fs.existsSync(publicImagesPath)) {
 
 console.log(`[静态文件配置] 图片目录1: ${imagesPath}`);
 console.log(`[静态文件配置] 图片目录2: ${publicImagesPath}`);
+console.log(`[静态文件配置] 图片目录3: ${deployTempPath}`);
 console.log(`[静态文件配置] 图片目录1存在: ${fs.existsSync(imagesPath)}`);
 console.log(`[静态文件配置] 图片目录2存在: ${fs.existsSync(publicImagesPath)}`);
+console.log(`[静态文件配置] 图片目录3存在: ${fs.existsSync(deployTempPath)}`);
 
-// 列出两个目录的图片
+// 列出三个目录的图片
 let totalImages = 0;
+let dir1Count = 0, dir2Count = 0, dir3Count = 0;
+
 if (fs.existsSync(imagesPath)) {
     const imageFiles = fs.readdirSync(imagesPath);
-    totalImages += imageFiles.length;
-    console.log(`[静态文件配置] 目录1图片数量: ${imageFiles.length}`);
-    if (imageFiles.length > 0) {
+    dir1Count = imageFiles.length;
+    totalImages += dir1Count;
+    console.log(`[静态文件配置] 目录1图片数量: ${dir1Count}`);
+    if (dir1Count > 0) {
         console.log(`[静态文件配置] 目录1前5个图片: ${imageFiles.slice(0, 5).join(', ')}`);
     }
 }
 
 if (fs.existsSync(publicImagesPath)) {
     const publicImageFiles = fs.readdirSync(publicImagesPath);
-    totalImages += publicImageFiles.length;
-    console.log(`[静态文件配置] 目录2图片数量: ${publicImageFiles.length}`);
-    if (publicImageFiles.length > 0) {
+    dir2Count = publicImageFiles.length;
+    totalImages += dir2Count;
+    console.log(`[静态文件配置] 目录2图片数量: ${dir2Count}`);
+    if (dir2Count > 0) {
         console.log(`[静态文件配置] 目录2前5个图片: ${publicImageFiles.slice(0, 5).join(', ')}`);
     }
 }
 
-if (totalImages === 0) {
-    console.log('[静态文件配置] 警告：两个图片目录都为空！请确保图片文件已正确部署');
+if (fs.existsSync(deployTempPath)) {
+    const tempImageFiles = fs.readdirSync(deployTempPath);
+    dir3Count = tempImageFiles.length;
+    totalImages += dir3Count;
+    console.log(`[静态文件配置] 目录3图片数量: ${dir3Count}`);
+    if (dir3Count > 0) {
+        console.log(`[静态文件配置] 目录3前5个图片: ${tempImageFiles.slice(0, 5).join(', ')}`);
+    }
 }
 
-// 优先从主目录服务图片，如果找不到则从public目录查找
+if (totalImages === 0) {
+    console.log('[静态文件配置] 警告：所有图片目录都为空！请确保图片文件已正确部署');
+}
+
+// 如果主目录为空，尝试从其他目录复制图片
+if (dir1Count === 0 && (dir2Count > 0 || dir3Count > 0)) {
+    console.log('[静态文件配置] 主图片目录为空，尝试从其他目录复制...');
+    const sourceDir = dir3Count > 0 ? deployTempPath : publicImagesPath;
+    if (fs.existsSync(sourceDir)) {
+        const files = fs.readdirSync(sourceDir);
+        files.forEach(file => {
+            if (file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
+                const sourceFile = path.join(sourceDir, file);
+                const destFile = path.join(imagesPath, file);
+                try {
+                    fs.copyFileSync(sourceFile, destFile);
+                    console.log(`[静态文件配置] 已复制: ${file}`);
+                } catch (e) {
+                    console.log(`[静态文件配置] 复制失败: ${file} - ${e.message}`);
+                }
+            }
+        });
+        console.log('[静态文件配置] 图片复制完成');
+    }
+}
+
+// 优先从主目录服务图片，如果找不到则从其他目录查找
 app.use('/images', (req, res, next) => {
-    const filePath = path.join(imagesPath, req.url);
-    if (fs.existsSync(filePath)) {
+    const filePath1 = path.join(imagesPath, req.url);
+    const filePath2 = path.join(publicImagesPath, req.url);
+    const filePath3 = path.join(deployTempPath, req.url);
+    
+    if (fs.existsSync(filePath1)) {
         express.static(imagesPath)(req, res, next);
-    } else {
+    } else if (fs.existsSync(filePath2)) {
         express.static(publicImagesPath)(req, res, next);
+    } else if (fs.existsSync(filePath3)) {
+        express.static(deployTempPath)(req, res, next);
+    } else {
+        res.status(404).send(`Cannot GET ${req.originalUrl}`);
     }
 });
 app.use(express.static(path.join(__dirname, '..'), {
