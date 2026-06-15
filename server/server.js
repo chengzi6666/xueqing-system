@@ -74,26 +74,42 @@ if (totalImages === 0) {
     console.log('[静态文件配置] 警告：所有图片目录都为空！请确保图片文件已正确部署');
 }
 
-// 如果主目录为空，尝试从其他目录复制图片
-if (dir1Count === 0 && (dir2Count > 0 || dir3Count > 0)) {
-    console.log('[静态文件配置] 主图片目录为空，尝试从其他目录复制...');
-    const sourceDir = dir3Count > 0 ? deployTempPath : publicImagesPath;
-    if (fs.existsSync(sourceDir)) {
+// 确保主目录有图片 - 从所有可能的源目录复制
+console.log('[静态文件配置] 确保主图片目录有图片...');
+const allSourceDirs = [imagesPath, publicImagesPath, deployTempPath];
+let copiedCount = 0;
+
+allSourceDirs.forEach(sourceDir => {
+    if (fs.existsSync(sourceDir) && sourceDir !== imagesPath) {
         const files = fs.readdirSync(sourceDir);
         files.forEach(file => {
             if (file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
                 const sourceFile = path.join(sourceDir, file);
                 const destFile = path.join(imagesPath, file);
-                try {
-                    fs.copyFileSync(sourceFile, destFile);
-                    console.log(`[静态文件配置] 已复制: ${file}`);
-                } catch (e) {
-                    console.log(`[静态文件配置] 复制失败: ${file} - ${e.message}`);
+                if (!fs.existsSync(destFile)) {
+                    try {
+                        fs.copyFileSync(sourceFile, destFile);
+                        copiedCount++;
+                        console.log(`[静态文件配置] 已复制: ${file}`);
+                    } catch (e) {
+                        console.log(`[静态文件配置] 复制失败: ${file} - ${e.message}`);
+                    }
                 }
             }
         });
-        console.log('[静态文件配置] 图片复制完成');
     }
+});
+
+if (copiedCount > 0) {
+    console.log(`[静态文件配置] 图片复制完成，共复制 ${copiedCount} 张图片`);
+} else {
+    console.log('[静态文件配置] 所有图片已存在，无需复制');
+}
+
+// 重新检查主目录的图片数量
+if (fs.existsSync(imagesPath)) {
+    const updatedFiles = fs.readdirSync(imagesPath);
+    console.log(`[静态文件配置] 更新后主目录图片数量: ${updatedFiles.length}`);
 }
 
 // 优先从主目录服务图片，如果找不到则从其他目录查找
