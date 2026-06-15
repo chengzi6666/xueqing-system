@@ -112,22 +112,10 @@ if (fs.existsSync(imagesPath)) {
     console.log(`[静态文件配置] 更新后主目录图片数量: ${updatedFiles.length}`);
 }
 
-// 优先从主目录服务图片，如果找不到则从其他目录查找
-app.use('/images', (req, res, next) => {
-    const filePath1 = path.join(imagesPath, req.url);
-    const filePath2 = path.join(publicImagesPath, req.url);
-    const filePath3 = path.join(deployTempPath, req.url);
-    
-    if (fs.existsSync(filePath1)) {
-        express.static(imagesPath)(req, res, next);
-    } else if (fs.existsSync(filePath2)) {
-        express.static(publicImagesPath)(req, res, next);
-    } else if (fs.existsSync(filePath3)) {
-        express.static(deployTempPath)(req, res, next);
-    } else {
-        res.status(404).send(`Cannot GET ${req.originalUrl}`);
-    }
-});
+// 静态文件服务 - 直接服务 images 目录
+app.use('/images', express.static(path.join(__dirname, '../images')));
+app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
+app.use('/images', express.static(path.join(__dirname, '../deploy_temp', 'images')));
 app.use(express.static(path.join(__dirname, '..'), {
     index: 'index.html'
 }));
