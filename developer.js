@@ -6,6 +6,11 @@ let configData = null;
 let versionHistory = null;
 let imagesList = [];
 let imageUrlMap = {};
+let levelConfig = {
+    levels: ['L1', 'L2', 'L3', 'L4'],
+    levelNames: {},
+    levelHidden: {}
+};
 
 // 初始化所有数据结构（确保页面加载时就有正确的数据）
 function initializeData() {
@@ -82,7 +87,7 @@ function initializeData() {
     
     if (!configData) {
         configData = {
-            currentVersion: 'v5.0.0',
+            currentVersion: 'v5.0.1',
             teacherName: '老师',
             teacherAvatar: '',
             developerPassword: 'admin123'
@@ -107,31 +112,14 @@ function initializeData() {
 // 立即初始化数据
 initializeData();
 
-// 云开发配置
+// 云开发配置（已禁用，使用 Railway 后端）
 let cloudbaseApp = null;
-try {
-    if (!window.location.origin.includes('localhost') && typeof cloudbase !== 'undefined') {
-        cloudbaseApp = cloudbase.init({
-            env: 'xueqing-system-d2g4d3p65a7bd1e18'
-        });
-        console.log('云开发初始化成功');
-    } else {
-        console.log('本地环境或云开发SDK未加载，使用本地模式');
-    }
-} catch (e) {
-    console.error('云开发初始化失败:', e);
-    cloudbaseApp = null;
-}
+console.log('使用 Railway 后端模式，云开发已禁用');
 
-// 云开发匿名登录（仅在云开发可用时）
-if (cloudbaseApp) {
-    cloudbaseApp.auth().anonymousAuthProvider().signIn()
-        .then(() => console.log('云开发匿名登录成功'))
-        .catch(err => console.error('云开发匿名登录失败:', err));
-}
-
-// 后端API地址（完全不使用后端API，仅使用云开发数据库和本地存储）
-const API_BASE_URL = null;
+// 后端API地址（使用 Railway 后端）
+const API_BASE_URL = window.location.origin.includes('localhost') 
+    ? 'http://localhost:3000/api' 
+    : '/api';
 
 async function init() {
     await loadData();
@@ -146,12 +134,12 @@ function loadFromStorage() {
             const parsed = JSON.parse(savedOutline);
             // 安全合并数据，保留默认结构，只合并有实际内容的数据
             if (parsed.math && parsed.math.lessons) {
-                for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                for (const level of Object.keys(parsed.math.lessons)) {
                     if (parsed.math.lessons[level]) {
                         for (const lesson of Object.keys(parsed.math.lessons[level])) {
                             const savedLesson = parsed.math.lessons[level][lesson];
                             // 只有当保存的数据有实际内容时才覆盖
-                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary)) {
+                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary || savedLesson.image)) {
                                 if (!outlineData.math.lessons[level]) {
                                     outlineData.math.lessons[level] = {};
                                 }
@@ -165,12 +153,12 @@ function loadFromStorage() {
                 }
             }
             if (parsed.chinese && parsed.chinese.lessons) {
-                for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                for (const level of Object.keys(parsed.chinese.lessons)) {
                     if (parsed.chinese.lessons[level]) {
                         for (const lesson of Object.keys(parsed.chinese.lessons[level])) {
                             const savedLesson = parsed.chinese.lessons[level][lesson];
                             // 只有当保存的数据有实际内容时才覆盖
-                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary)) {
+                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary || savedLesson.image)) {
                                 if (!outlineData.chinese.lessons[level]) {
                                     outlineData.chinese.lessons[level] = {};
                                 }
@@ -183,6 +171,13 @@ function loadFromStorage() {
                     }
                 }
             }
+            // 合并 levels 字段
+            if (parsed.math?.levels) {
+                outlineData.math.levels = parsed.math.levels;
+            }
+            if (parsed.chinese?.levels) {
+                outlineData.chinese.levels = parsed.chinese.levels;
+            }
             console.log('已从本地存储加载大纲数据（缓存）');
         }
         
@@ -190,6 +185,13 @@ function loadFromStorage() {
         if (savedImages) {
             imagesList = JSON.parse(savedImages);
             console.log('已从本地存储加载图片列表（缓存）');
+        }
+        
+        const savedConfig = localStorage.getItem('configData');
+        if (savedConfig) {
+            const parsedConfig = JSON.parse(savedConfig);
+            configData = { ...configData, ...parsedConfig };
+            console.log('已从本地存储加载配置数据（缓存）');
         }
     } catch (e) {
         console.error('加载本地存储失败:', e);
@@ -200,11 +202,366 @@ function loadFromStorage() {
 function saveToStorage() {
     try {
         localStorage.setItem('outlineData', JSON.stringify(outlineData));
+        localStorage.setItem('configData', JSON.stringify(configData));
         localStorage.setItem('imagesList', JSON.stringify(imagesList));
         console.log('数据已保存到本地存储（缓存）');
     } catch (e) {
         console.error('保存到本地存储失败:', e);
     }
+}
+
+// 学科配置相关函数
+function renderSubjectList() {
+    const container = document.getElementById('subject-list');
+    if (!container) return;
+    
+    const subjects = ['math', 'chinese'];
+    
+    container.innerHTML = subjects.map(subjectKey => {
+        const subjectData = outlineData[subjectKey];
+        const name = subjectData?.name || (subjectKey === 'math' ? '数学' : '语文');
+        const hidden = subjectData?.hidden || false;
+        
+        return `
+            <div class="subject-item ${hidden ? 'hidden' : ''}" data-subject="${subjectKey}">
+                <div class="subject-icon ${subjectKey}">${subjectKey === 'math' ? '数' : '语'}</div>
+                <div class="subject-info">
+                    <input type="text" class="subject-name-input" 
+                           value="${name}" 
+                           onchange="updateSubjectName('${subjectKey}', this.value)"
+                           placeholder="输入学科名称">
+                </div>
+                <div class="subject-toggle">
+                    <span class="subject-toggle-label">${hidden ? '已隐藏' : '显示中'}</span>
+                    <div class="toggle-switch ${!hidden ? 'active' : ''}" 
+                         onclick="toggleSubjectVisibility('${subjectKey}')">
+                    </div>
+                </div>
+                ${hidden ? '<span class="hidden-badge">已隐藏</span>' : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function updateSubjectName(subjectKey, newName) {
+    if (!outlineData[subjectKey]) {
+        outlineData[subjectKey] = { lessons: {} };
+    }
+    outlineData[subjectKey].name = newName;
+    console.log(`学科 ${subjectKey} 名称已更新为: ${newName}`);
+}
+
+function toggleSubjectVisibility(subjectKey) {
+    if (!outlineData[subjectKey]) {
+        outlineData[subjectKey] = { lessons: {} };
+    }
+    outlineData[subjectKey].hidden = !outlineData[subjectKey].hidden;
+    renderSubjectList();
+}
+
+function saveSubjectConfig() {
+    // 保存到服务器
+    if (API_BASE_URL) {
+        fetch(`${API_BASE_URL}/outline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(outlineData)
+        }).then(response => {
+            if (response.ok) {
+                console.log('学科配置已保存到服务器');
+            }
+        }).catch(e => {
+            console.error('保存学科配置失败:', e);
+        });
+    }
+    
+    // 保存到本地缓存
+    localStorage.setItem('outlineData', JSON.stringify(outlineData));
+    alert('学科配置已保存！\n老师端刷新页面后将同步更新。');
+}
+
+// 年级配置相关函数
+async function loadLevelConfig() {
+    try {
+        // 优先从API加载
+        if (API_BASE_URL) {
+            const response = await fetch(`${API_BASE_URL}/levels`);
+            if (response.ok) {
+                const data = await response.json();
+                levelConfig.levels = data.levels || ['L1', 'L2', 'L3', 'L4'];
+                levelConfig.levelNames = data.levelNames || {};
+                console.log('从API加载年级配置成功:', levelConfig);
+                return;
+            }
+        }
+        
+        // 从configData中获取
+        if (configData && configData.levels) {
+            levelConfig.levels = configData.levels;
+            levelConfig.levelNames = configData.levelNames || {};
+        } else {
+            // 使用默认值
+            levelConfig.levels = ['L1', 'L2', 'L3', 'L4'];
+            levelConfig.levelNames = {};
+        }
+        console.log('年级配置:', levelConfig);
+    } catch (e) {
+        console.error('加载年级配置失败:', e);
+        levelConfig.levels = ['L1', 'L2', 'L3', 'L4'];
+        levelConfig.levelNames = {};
+    }
+}
+
+function renderLevelList() {
+    const container = document.getElementById('level-list');
+    if (!container) return;
+    
+    if (levelConfig.levels.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #888;">暂无年级配置</p>';
+        return;
+    }
+    
+    container.innerHTML = levelConfig.levels.map((level, index) => {
+        const displayName = levelConfig.levelNames[level] || level;
+        const isHidden = levelConfig.levelHidden?.[level] || false;
+        // 检查该年级在哪些学科中，如果 levels 字段不存在，默认不在该学科中
+        const mathLevels = outlineData.math?.levels;
+        const chineseLevels = outlineData.chinese?.levels;
+        const inMath = mathLevels ? mathLevels.includes(level) : false;
+        const inChinese = chineseLevels ? chineseLevels.includes(level) : false;
+        const subjectTags = [];
+        if (inMath) subjectTags.push('<span class="subject-tag math-tag">数学</span>');
+        if (inChinese) subjectTags.push('<span class="subject-tag chinese-tag">语文</span>');
+        
+        const canMoveUp = index > 0;
+        const canMoveDown = index < levelConfig.levels.length - 1;
+        
+        return `
+            <div class="level-item ${isHidden ? 'hidden-level' : ''}" data-level="${level}">
+                <div class="level-info">
+                    <input type="text" class="level-name-input" 
+                           value="${displayName}" 
+                           onchange="updateLevelName('${level}', this.value)"
+                           placeholder="输入年级显示名称">
+                    <div class="level-subjects">
+                        ${subjectTags.join('')}
+                    </div>
+                </div>
+                <div class="level-actions">
+                    <div class="level-toggle">
+                        <span class="toggle-label">${isHidden ? '已隐藏' : '显示中'}</span>
+                        <div class="toggle-switch ${!isHidden ? 'active' : ''}" 
+                             onclick="toggleLevelVisibility('${level}')">
+                        </div>
+                    </div>
+                    <div class="reorder-buttons">
+                        <button class="reorder-btn up-btn" ${!canMoveUp ? 'disabled' : ''} 
+                                onclick="moveLevelUp('${level}')" title="上移">
+                            ↑
+                        </button>
+                        <button class="reorder-btn down-btn" ${!canMoveDown ? 'disabled' : ''} 
+                                onclick="moveLevelDown('${level}')" title="下移">
+                            ↓
+                        </button>
+                    </div>
+                    <button class="delete-level-btn" onclick="deleteLevel('${level}')">删除</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleLevelVisibility(level) {
+    if (!levelConfig.levelHidden) {
+        levelConfig.levelHidden = {};
+    }
+    levelConfig.levelHidden[level] = !levelConfig.levelHidden[level];
+    console.log(`年级 ${level} 隐藏状态: ${levelConfig.levelHidden[level]}`);
+    renderLevelList();
+}
+
+function moveLevelUp(level) {
+    const index = levelConfig.levels.indexOf(level);
+    if (index > 0) {
+        // 交换位置
+        const temp = levelConfig.levels[index];
+        levelConfig.levels[index] = levelConfig.levels[index - 1];
+        levelConfig.levels[index - 1] = temp;
+        
+        // 同步更新各学科的 levels
+        if (outlineData.math?.levels) {
+            const mathIndex = outlineData.math.levels.indexOf(level);
+            if (mathIndex > 0) {
+                const temp = outlineData.math.levels[mathIndex];
+                outlineData.math.levels[mathIndex] = outlineData.math.levels[mathIndex - 1];
+                outlineData.math.levels[mathIndex - 1] = temp;
+            }
+        }
+        if (outlineData.chinese?.levels) {
+            const chineseIndex = outlineData.chinese.levels.indexOf(level);
+            if (chineseIndex > 0) {
+                const temp = outlineData.chinese.levels[chineseIndex];
+                outlineData.chinese.levels[chineseIndex] = outlineData.chinese.levels[chineseIndex - 1];
+                outlineData.chinese.levels[chineseIndex - 1] = temp;
+            }
+        }
+        
+        renderLevelList();
+    }
+}
+
+function moveLevelDown(level) {
+    const index = levelConfig.levels.indexOf(level);
+    if (index < levelConfig.levels.length - 1) {
+        // 交换位置
+        const temp = levelConfig.levels[index];
+        levelConfig.levels[index] = levelConfig.levels[index + 1];
+        levelConfig.levels[index + 1] = temp;
+        
+        // 同步更新各学科的 levels
+        if (outlineData.math?.levels) {
+            const mathIndex = outlineData.math.levels.indexOf(level);
+            if (mathIndex < outlineData.math.levels.length - 1) {
+                const temp = outlineData.math.levels[mathIndex];
+                outlineData.math.levels[mathIndex] = outlineData.math.levels[mathIndex + 1];
+                outlineData.math.levels[mathIndex + 1] = temp;
+            }
+        }
+        if (outlineData.chinese?.levels) {
+            const chineseIndex = outlineData.chinese.levels.indexOf(level);
+            if (chineseIndex < outlineData.chinese.levels.length - 1) {
+                const temp = outlineData.chinese.levels[chineseIndex];
+                outlineData.chinese.levels[chineseIndex] = outlineData.chinese.levels[chineseIndex + 1];
+                outlineData.chinese.levels[chineseIndex + 1] = temp;
+            }
+        }
+        
+        renderLevelList();
+    }
+}
+
+function updateLevelName(level, newName) {
+    levelConfig.levelNames[level] = newName;
+    console.log(`年级 ${level} 名称已更新为: ${newName}`);
+}
+
+function deleteLevel(level) {
+    if (levelConfig.levels.length <= 1) {
+        alert('至少需要保留一个年级！');
+        return;
+    }
+    
+    if (confirm(`确定要删除年级 ${level} 吗？\n注意：这不会删除该年级的大纲数据，只是从列表中移除。`)) {
+        levelConfig.levels = levelConfig.levels.filter(l => l !== level);
+        delete levelConfig.levelNames[level];
+        
+        // 从各学科的 levels 中也移除
+        if (outlineData.math?.levels) {
+            outlineData.math.levels = outlineData.math.levels.filter(l => l !== level);
+        }
+        if (outlineData.chinese?.levels) {
+            outlineData.chinese.levels = outlineData.chinese.levels.filter(l => l !== level);
+        }
+        
+        renderLevelList();
+    }
+}
+
+function addNewLevel() {
+    const levelNameInput = document.getElementById('new-level-name');
+    const addToMath = document.getElementById('add-level-math')?.checked ?? true;
+    const addToChinese = document.getElementById('add-level-chinese')?.checked ?? true;
+    
+    const levelName = levelNameInput.value.trim();
+    
+    if (!levelName) {
+        alert('请输入年级显示名称');
+        return;
+    }
+    
+    // 自动生成年级代号
+    let maxNum = -1;
+    levelConfig.levels.forEach(level => {
+        const match = level.match(/^L(\d+)$/);
+        if (match) {
+            const num = parseInt(match[1]);
+            if (num > maxNum) maxNum = num;
+        }
+    });
+    const levelId = `L${maxNum + 1}`;
+    
+    // 添加到全局年级列表
+    levelConfig.levels.push(levelId);
+    levelConfig.levelNames[levelId] = levelName;
+    
+    // 添加到对应学科的 levels 中
+    const subjects = [];
+    if (addToMath) {
+        if (!outlineData.math) outlineData.math = { lessons: {} };
+        if (!outlineData.math.levels) outlineData.math.levels = [...levelConfig.levels];
+        if (!outlineData.math.levels.includes(levelId)) outlineData.math.levels.push(levelId);
+        subjects.push('数学');
+    }
+    if (addToChinese) {
+        if (!outlineData.chinese) outlineData.chinese = { lessons: {} };
+        if (!outlineData.chinese.levels) outlineData.chinese.levels = [...levelConfig.levels];
+        if (!outlineData.chinese.levels.includes(levelId)) outlineData.chinese.levels.push(levelId);
+        subjects.push('语文');
+    }
+    
+    // 清空输入框
+    levelIdInput.value = '';
+    levelNameInput.value = '';
+    
+    renderLevelList();
+    alert(`年级 ${levelId} 已添加到：${subjects.join('、')}`);
+}
+
+async function saveLevelConfig() {
+    try {
+        // 同时更新configData
+        configData.levels = levelConfig.levels;
+        configData.levelNames = levelConfig.levelNames;
+        configData.levelHidden = levelConfig.levelHidden || {};
+        
+        // 保存全局年级配置到API
+        if (API_BASE_URL) {
+            const response = await fetch(`${API_BASE_URL}/levels`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(levelConfig)
+            });
+            
+            if (response.ok) {
+                console.log('年级配置已保存到服务器');
+            }
+            
+            // 同时保存 outlineData（包含每个学科的 levels）
+            const outlineResponse = await fetch(`${API_BASE_URL}/outline`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(outlineData)
+            });
+            
+            if (outlineResponse.ok) {
+                console.log('大纲数据（含学科年级配置）已保存到服务器');
+            }
+        }
+        
+        // 保存到本地缓存
+        localStorage.setItem('levelConfig', JSON.stringify(levelConfig));
+        localStorage.setItem('configData', JSON.stringify(configData));
+        localStorage.setItem('outlineData', JSON.stringify(outlineData));
+        
+        alert('年级配置已保存！\n发布后老师端将同步更新。');
+    } catch (e) {
+        console.error('保存年级配置失败:', e);
+        alert('保存失败：' + e.message);
+    }
+}
+
+function getLevelDisplayName(level) {
+    return levelConfig.levelNames[level] || level;
 }
 
 async function loadData() {
@@ -256,20 +613,23 @@ async function loadData() {
             }
         }
         
+        // 加载年级配置
+        await loadLevelConfig();
+        
         // 如果数据加载成功，合并到默认数据（默认数据优先，只有有实际内容的数据才覆盖）
         if (outline && outline.math && outline.chinese) {
             // 合理合并数据，默认数据（第五版）优先
             // 只有当加载的数据有实际内容时才覆盖默认数据
             const mergedData = JSON.parse(JSON.stringify(outlineData)); // 从默认数据开始
             
-            // 合并数学数据
+            // 合并数学数据 - 遍历所有实际存在的级别
             if (outline.math?.lessons) {
-                for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                for (const level of Object.keys(outline.math.lessons)) {
                     if (outline.math.lessons[level]) {
                         for (const lesson of Object.keys(outline.math.lessons[level])) {
                             const savedLesson = outline.math.lessons[level][lesson];
                             // 只有当保存的数据有实际内容时才覆盖
-                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary)) {
+                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary || savedLesson.image)) {
                                 if (!mergedData.math.lessons[level]) {
                                     mergedData.math.lessons[level] = {};
                                 }
@@ -283,14 +643,14 @@ async function loadData() {
                 }
             }
             
-            // 合并语文数据
+            // 合并语文数据 - 遍历所有实际存在的级别
             if (outline.chinese?.lessons) {
-                for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                for (const level of Object.keys(outline.chinese.lessons)) {
                     if (outline.chinese.lessons[level]) {
                         for (const lesson of Object.keys(outline.chinese.lessons[level])) {
                             const savedLesson = outline.chinese.lessons[level][lesson];
                             // 只有当保存的数据有实际内容时才覆盖
-                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary)) {
+                            if (savedLesson && (savedLesson.title || savedLesson.keyPoints?.length || savedLesson.summary || savedLesson.image)) {
                                 if (!mergedData.chinese.lessons[level]) {
                                     mergedData.chinese.lessons[level] = {};
                                 }
@@ -302,6 +662,14 @@ async function loadData() {
                         }
                     }
                 }
+            }
+            
+            // 合并 levels 字段（保留每个学科自己定义的年级列表）
+            if (outline.math?.levels) {
+                mergedData.math.levels = outline.math.levels;
+            }
+            if (outline.chinese?.levels) {
+                mergedData.chinese.levels = outline.chinese.levels;
             }
             
             outlineData = mergedData;
@@ -350,6 +718,7 @@ async function loadImagesList() {
         '数学-L2-第1讲.png', '数学-L2-第2讲.png', '数学-L2-第3讲.png', '数学-L2-第4讲.png', '数学-L2-第5讲.png',
         '数学-L3-第1讲.png', '数学-L3-第2讲.png', '数学-L3-第3讲.png', '数学-L3-第4讲.png', '数学-L3-第5讲.png',
         '数学-L4-第1讲.png', '数学-L4-第2讲.png', '数学-L4-第3讲.png', '数学-L4-第4讲.png', '数学-L4-第5讲.png',
+        '语文-L0-第1讲.png', '语文-L0-第2讲.png', '语文-L0-第3讲.png', '语文-L0-第4讲.png', '语文-L0-第5讲.png',
         '语文-L1-第1讲.png', '语文-L1-第2讲.jpg', '语文-L1-第3讲.png', '语文-L1-第4讲.jpg', '语文-L1-第5讲.jpg',
         '语文-L2-第1讲.jpg', '语文-L2-第2讲.jpg', '语文-L2-第3讲.jpg', '语文-L2-第4讲.jpg', '语文-L2-第5讲.jpg',
         '语文-L3-第1讲.png', '语文-L3-第2讲.png', '语文-L3-第3讲.png', '语文-L3-第4讲.png', '语文-L3-第5讲.png',
@@ -382,17 +751,13 @@ async function loadImagesList() {
         }
     }
     
-    // 尝试从本地目录获取图片列表（仅本地开发环境）
+    // 尝试从API获取图片列表
     try {
-        const response = await fetch('images/');
+        const response = await fetch(`${API_BASE_URL}/images`);
         if (response.ok) {
-            const html = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const links = doc.querySelectorAll('a');
-            const localImages = Array.from(links).map(a => a.textContent).filter(n => n.endsWith('.png') || n.endsWith('.jpg'));
-            imagesList = [...new Set([...predefinedImages, ...localImages])];
-            console.log('从本地目录加载图片列表成功');
+            const apiImages = await response.json();
+            imagesList = [...new Set([...predefinedImages, ...apiImages])];
+            console.log('从API加载图片列表成功');
             populateImageSelect();
             return;
         }
@@ -432,42 +797,130 @@ function populateImageSelect() {
 }
 
 function updateUI() {
-    // 确保数据结构正确
     ensureDataStructure();
+    renderLevelButtons('outline-level-selector', 'images-level-selector');
     renderLessonButtons();
+    populateImageSelect();
     renderLessonData();
     renderImagesGrid();
 }
 
+// 渲染年级按钮
+function renderLevelButtons(outlineSelectorId, imagesSelectorId) {
+    const outlineSelector = document.getElementById(outlineSelectorId);
+    const imagesSelector = document.getElementById(imagesSelectorId);
+    
+    // 优先使用当前学科的 levels，如果没有就用全局的
+    let levels = levelConfig.levels || ['L1', 'L2', 'L3', 'L4'];
+    if (outlineData[currentSubject] && outlineData[currentSubject].levels && outlineData[currentSubject].levels.length > 0) {
+        levels = outlineData[currentSubject].levels;
+    }
+    
+    // 生成按钮HTML
+    const buttonsHtml = levels.map(level => {
+        const displayName = levelConfig.levelNames[level] || level;
+        const isActive = level === currentLevel;
+        return `<button class="level-btn ${isActive ? 'active' : ''}" data-level="${level}">${displayName}</button>`;
+    }).join('');
+    
+    if (outlineSelector) {
+        outlineSelector.innerHTML = buttonsHtml;
+        
+        // 重新绑定点击事件
+        outlineSelector.querySelectorAll('.level-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                closeImagePreview();
+                closePublishModal();
+                outlineSelector.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentLevel = this.dataset.level;
+                updateUI();
+            });
+        });
+    }
+    
+    if (imagesSelector) {
+        imagesSelector.innerHTML = buttonsHtml;
+        
+        // 重新绑定点击事件
+        imagesSelector.querySelectorAll('.level-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                closeImagePreview();
+                closePublishModal();
+                imagesSelector.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentLevel = this.dataset.level;
+                renderImagesGrid();
+            });
+        });
+    }
+}
+
 // 确保数据结构始终正确
 function ensureDataStructure() {
+    const globalLevels = levelConfig.levels || ['L1', 'L2', 'L3', 'L4'];
+    
     // 确保 outlineData 存在
     if (!outlineData) {
         outlineData = {};
     }
     
-    // 确保 math 和 chinese 存在
+    // 初始化年级的 lessons 对象
+    const initLessonsObj = (levels) => {
+        const obj = {};
+        levels.forEach(level => {
+            obj[level] = {};
+        });
+        return obj;
+    };
+    
+    // 确保 math 存在，并保留 name、hidden、levels 字段
     if (!outlineData.math) {
-        outlineData.math = { lessons: { L1: {}, L2: {}, L3: {}, L4: {} } };
-    }
-    if (!outlineData.chinese) {
-        outlineData.chinese = { lessons: { L1: {}, L2: {}, L3: {}, L4: {} } };
+        outlineData.math = { 
+            name: '数学', 
+            hidden: false, 
+            levels: ['L1', 'L2', 'L3', 'L4'], 
+            lessons: initLessonsObj(['L1', 'L2', 'L3', 'L4']) 
+        };
+    } else {
+        if (!outlineData.math.name) outlineData.math.name = '数学';
+        if (outlineData.math.hidden === undefined) outlineData.math.hidden = false;
+        if (!outlineData.math.levels) outlineData.math.levels = ['L1', 'L2', 'L3', 'L4'];
     }
     
-    // 确保 lessons 存在
+    // 确保 chinese 存在，并保留 name、hidden、levels 字段
+    if (!outlineData.chinese) {
+        outlineData.chinese = { 
+            name: '语文', 
+            hidden: false, 
+            levels: ['L1', 'L2', 'L3', 'L4'], 
+            lessons: initLessonsObj(['L1', 'L2', 'L3', 'L4']) 
+        };
+    } else {
+        if (!outlineData.chinese.name) outlineData.chinese.name = '语文';
+        if (outlineData.chinese.hidden === undefined) outlineData.chinese.hidden = false;
+        if (!outlineData.chinese.levels) outlineData.chinese.levels = ['L1', 'L2', 'L3', 'L4'];
+    }
+    
+    // 获取每个学科自己的 levels
+    const mathLevels = outlineData.math.levels;
+    const chineseLevels = outlineData.chinese.levels;
+    
+    // 确保 lessons 存在（使用学科自己的 levels）
     if (!outlineData.math.lessons) {
-        outlineData.math.lessons = { L1: {}, L2: {}, L3: {}, L4: {} };
+        outlineData.math.lessons = initLessonsObj(mathLevels);
     }
     if (!outlineData.chinese.lessons) {
-        outlineData.chinese.lessons = { L1: {}, L2: {}, L3: {}, L4: {} };
+        outlineData.chinese.lessons = initLessonsObj(chineseLevels);
     }
     
-    // 确保每个级别存在
-    const levels = ['L1', 'L2', 'L3', 'L4'];
-    for (const level of levels) {
+    // 确保每个级别存在（只为学科自己 levels 中的年级创建）
+    for (const level of mathLevels) {
         if (!outlineData.math.lessons[level]) {
             outlineData.math.lessons[level] = {};
         }
+    }
+    for (const level of chineseLevels) {
         if (!outlineData.chinese.lessons[level]) {
             outlineData.chinese.lessons[level] = {};
         }
@@ -505,44 +958,25 @@ function cleanExcessLessons() {
 
 // 动态生成讲次按钮（最多5个）
 function renderLessonButtons() {
-    // 先清理多余数据
     cleanExcessLessons();
     
     const lessonTabs = document.querySelector('.lesson-tabs');
     const lessons = outlineData[currentSubject]?.lessons[currentLevel] || {};
     
-    // 获取讲次并排序，只保留前5个
-    let lessonKeys = Object.keys(lessons).sort((a, b) => {
-        const numA = parseInt(a.replace(/\D/g, ''));
-        const numB = parseInt(b.replace(/\D/g, ''));
-        return numA - numB;
-    }).slice(0, 5); // 强制最多5个讲次
+    // 始终显示5个讲次按钮（第1讲~第5讲）
+    const allLessons = ['1', '2', '3', '4', '5'];
     
     // 确定当前活动的讲次
     let activeKey = currentLesson;
-    if (lessonKeys.length > 0 && !lessonKeys.includes(currentLesson)) {
-        activeKey = lessonKeys[0];
-        currentLesson = activeKey;
+    if (activeKey && !allLessons.includes(activeKey)) {
+        activeKey = '1';
+        currentLesson = '1';
     }
     
-    if (lessonKeys.length === 0) {
-        lessonTabs.innerHTML = `
-            <button class="lesson-btn ${activeKey === '1' ? 'active' : ''}" data-lesson="1">第1讲</button>
-            <button class="lesson-btn ${activeKey === '2' ? 'active' : ''}" data-lesson="2">第2讲</button>
-            <button class="lesson-btn ${activeKey === '3' ? 'active' : ''}" data-lesson="3">第3讲</button>
-            <button class="lesson-btn ${activeKey === '4' ? 'active' : ''}" data-lesson="4">第4讲</button>
-            <button class="lesson-btn ${activeKey === '5' ? 'active' : ''}" data-lesson="5">第5讲</button>
-        `;
-    } else {
-        lessonTabs.innerHTML = lessonKeys.map((key) => `
-            <button class="lesson-btn ${key === activeKey ? 'active' : ''}" data-lesson="${key}">第${key.replace(/\D/g, '')}讲</button>
-        `).join('');
-    }
-    
-    // 更新当前讲次
-    if (lessonKeys.length > 0 && !lessons[currentLesson]) {
-        currentLesson = lessonKeys[0];
-    }
+    // 生成所有5个讲次按钮
+    lessonTabs.innerHTML = allLessons.map((key) => `
+        <button class="lesson-btn ${key === activeKey ? 'active' : ''}" data-lesson="${key}">第${key}讲</button>
+    `).join('');
 }
 
 // 讲次按钮点击处理（事件委托）
@@ -619,6 +1053,9 @@ function renderImagesGrid() {
             <div class="image-info">
                 <p>${img}</p>
             </div>
+            <button class="delete-image-btn" onclick="event.stopPropagation(); deleteImage('${img}')" title="删除图片">
+                ✕
+            </button>
         </div>
     `).join('');
 }
@@ -628,14 +1065,38 @@ function selectImage(img) {
     updateImagePreview();
 }
 
-// 获取图片URL（优先从映射表获取，否则使用本地路径）
+function deleteImage(filename) {
+    if (!confirm(`确定要删除图片 "${filename}" 吗？此操作无法撤销。`)) {
+        return;
+    }
+    
+    fetch(`${API_BASE_URL}/image/${encodeURIComponent(filename)}`, {
+        method: 'DELETE'
+    }).then(response => response.json()).then(data => {
+        if (data.success) {
+            imagesList = imagesList.filter(img => img !== filename);
+            delete imageUrlMap[filename];
+            saveToStorage();
+            renderImagesGrid();
+            populateImageSelect();
+            alert('图片删除成功！');
+        } else {
+            alert('删除失败：' + data.message);
+        }
+    }).catch(error => {
+        console.error('删除图片失败:', error);
+        alert('删除失败，请重试');
+    });
+}
+
+// 获取图片URL（优先从映射表获取，否则使用API路径）
 function getImageUrl(imgName) {
     if (imageUrlMap[imgName]) {
         return imageUrlMap[imgName];
     }
     // 对中文文件名进行URL编码
     const encodedName = encodeURIComponent(imgName);
-    return `api/image/${encodedName}`;
+    return `${API_BASE_URL}/image/${encodedName}`;
 }
 
 // 图片预览功能
@@ -689,8 +1150,8 @@ async function handleImagesUpload(event) {
                     if (result.url) {
                         imageUrlMap[fileName] = result.url;
                     } else {
-                        // 如果没有返回URL，使用本地路径
-                        imageUrlMap[fileName] = `images/${fileName}`;
+                        // 如果没有返回URL，使用API路径
+                        imageUrlMap[fileName] = `${API_BASE_URL}/image/${encodeURIComponent(fileName)}`;
                     }
                     uploadSuccess = true;
                     console.log(`图片 ${fileName} 上传到后端成功`);
@@ -748,10 +1209,10 @@ async function handleImagesUpload(event) {
             }
         }
         
-        // 纯本地环境，直接使用本地路径
+        // 纯本地环境，使用API路径
         if (!uploadSuccess) {
-            console.log(`本地环境：图片 ${fileName} 直接使用本地路径`);
-            imageUrlMap[fileName] = `images/${fileName}`;
+            console.log(`本地环境：图片 ${fileName} 使用API路径`);
+            imageUrlMap[fileName] = `${API_BASE_URL}/image/${encodeURIComponent(fileName)}`;
             uploadSuccess = true;
         }
         
@@ -1410,18 +1871,57 @@ function renderVersions() {
         list.innerHTML = '<p style="text-align: center; color: #666;">暂无版本记录</p>';
         return;
     }
-    list.innerHTML = history.map(v => `
-        <div class="version-card">
-            <div class="version-header">
-                <span class="version-tag">${v.version}</span>
-                <span class="version-date">${v.date}</span>
+    
+    // 获取当前版本
+    const currentVersion = configData?.currentVersion || '';
+    
+    list.innerHTML = history.map(v => {
+        const isCurrent = v.version === currentVersion;
+        const canDelete = history.length > 1 && !isCurrent;
+        return `
+            <div class="version-card">
+                <div class="version-header">
+                    <span class="version-tag">${v.version}</span>
+                    ${isCurrent ? '<span class="current-badge">当前版本</span>' : ''}
+                    <span class="version-date">${v.date}</span>
+                </div>
+                <div class="version-info">
+                    <span class="subject-badge">${v.subject === 'both' ? '数学 + 语文' : (v.subject === 'math' ? '数学' : '语文')}</span>
+                    <p class="version-description">${v.description}</p>
+                </div>
+                ${canDelete ? `
+                    <div class="version-actions">
+                        <button class="delete-version-btn" onclick="deleteVersion('${v.version}')">删除版本</button>
+                    </div>
+                ` : ''}
             </div>
-            <div class="version-info">
-                <span class="subject-badge">${v.subject === 'both' ? '数学 + 语文' : (v.subject === 'math' ? '数学' : '语文')}</span>
-                <p class="version-description">${v.description}</p>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+}
+
+async function deleteVersion(version) {
+    if (!confirm(`确定要删除版本 ${version} 吗？此操作不可撤销。`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/version/${version}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            versionHistory = result.versionHistory;
+            renderVersions();
+            alert(`版本 ${version} 已成功删除`);
+        } else {
+            const error = await response.json();
+            alert(error.error || '删除失败');
+        }
+    } catch (e) {
+        console.error('删除版本失败:', e);
+        alert('删除版本失败：' + e.message);
+    }
 }
 
 function login() {
@@ -1466,13 +1966,24 @@ function saveOutline() {
     const summary = document.getElementById('lesson-summary').value;
     const image = document.getElementById('image-select').value;
 
-    if (!outlineData[currentSubject]?.lessons?.[currentLevel]) {
-        if (!outlineData[currentSubject]) {
-            outlineData[currentSubject] = { lessons: {} };
-        }
-        if (!outlineData[currentSubject].lessons) {
-            outlineData[currentSubject].lessons = {};
-        }
+    // 确保学科数据结构完整，保留 name、hidden、levels 字段
+    if (!outlineData[currentSubject]) {
+        outlineData[currentSubject] = { 
+            name: currentSubject === 'math' ? '数学' : '语文',
+            hidden: false,
+            levels: [...levelConfig.levels],
+            lessons: {} 
+        };
+    } else {
+        if (!outlineData[currentSubject].name) outlineData[currentSubject].name = currentSubject === 'math' ? '数学' : '语文';
+        if (outlineData[currentSubject].hidden === undefined) outlineData[currentSubject].hidden = false;
+        if (!outlineData[currentSubject].levels) outlineData[currentSubject].levels = [...levelConfig.levels];
+    }
+    
+    if (!outlineData[currentSubject].lessons) {
+        outlineData[currentSubject].lessons = {};
+    }
+    if (!outlineData[currentSubject].lessons[currentLevel]) {
         outlineData[currentSubject].lessons[currentLevel] = {};
     }
 
@@ -1568,6 +2079,8 @@ async function confirmPublish() {
                 // 更新配置
                 configData.currentVersion = newVersion;
                 configData.lastPublishTime = dateStr;
+                configData.levels = levelConfig.levels;
+                configData.levelNames = levelConfig.levelNames;
                 
                 const configRes = await db.collection('config').get();
                 if (configRes.data.length > 0) {
@@ -1615,6 +2128,8 @@ async function confirmPublish() {
 
                 configData.currentVersion = newVersion;
                 configData.lastPublishTime = dateStr;
+                configData.levels = levelConfig.levels;
+                configData.levelNames = levelConfig.levelNames;
                 
                 const configResponse = await fetch(`${API_BASE_URL}/config`, {
                     method: 'PUT',
@@ -1641,6 +2156,8 @@ async function confirmPublish() {
                     
                     configData.currentVersion = newVersion;
                     configData.lastPublishTime = dateStr;
+                    configData.levels = levelConfig.levels;
+                    configData.levelNames = levelConfig.levelNames;
                     
                     await fetch('/api/config', {
                         method: 'PUT',
@@ -1828,6 +2345,12 @@ function showSection(sectionId) {
         section.style.display = 'none';
     });
     document.getElementById(`section-${sectionId}`).style.display = 'block';
+    
+    if (sectionId === 'levels') {
+        renderLevelList();
+    } else if (sectionId === 'subjects') {
+        renderSubjectList();
+    }
 }
 
 // 初始化标志，防止重复绑定
@@ -1860,16 +2383,7 @@ function bindEventListeners() {
         });
     });
 
-    document.querySelectorAll('.level-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            closeImagePreview();
-            closePublishModal();
-            document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            currentLevel = this.dataset.level;
-            updateUI();
-        });
-    });
+    // 年级按钮事件已在 renderLevelButtons 中动态绑定
 
     const lessonTabs = document.querySelector('.lesson-tabs');
     if (lessonTabs) {

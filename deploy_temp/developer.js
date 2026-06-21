@@ -20,7 +20,7 @@ function initializeData() {
     
     if (!configData) {
         configData = {
-            currentVersion: 'v5.0.0',
+            currentVersion: 'v5.0.1',
             teacherName: '老师',
             teacherAvatar: '',
             developerPassword: 'admin123'
@@ -103,6 +103,13 @@ function loadFromStorage() {
             imagesList = JSON.parse(savedImages);
             console.log('已从本地存储加载图片列表（缓存）');
         }
+        
+        const savedConfig = localStorage.getItem('configData');
+        if (savedConfig) {
+            const parsedConfig = JSON.parse(savedConfig);
+            configData = { ...configData, ...parsedConfig };
+            console.log('已从本地存储加载配置数据（缓存）');
+        }
     } catch (e) {
         console.error('加载本地存储失败:', e);
     }
@@ -112,6 +119,7 @@ function loadFromStorage() {
 function saveToStorage() {
     try {
         localStorage.setItem('outlineData', JSON.stringify(outlineData));
+        localStorage.setItem('configData', JSON.stringify(configData));
         localStorage.setItem('imagesList', JSON.stringify(imagesList));
         console.log('数据已保存到本地存储（缓存）');
     } catch (e) {

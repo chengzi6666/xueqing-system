@@ -1,9 +1,24 @@
 {
-  "currentVersion": "v5.0.0",
-  "teacherName": "王老师",
+  "currentVersion": "v5.0.6",
+  "teacherName": "学而思老师",
   "teacherAvatar": "images/avatar_1780922450217.png",
   "developerPassword": "admin123",
   "footerText": "学而思 · 让学习更有效",
-  "lastPublishTime": "2026/6/13 10:22:11",
-  "lastUpdate": "2026-06-13T10:22:11.664Z"
+  "lastPublishTime": "2026/6/21 18:50:04",
+  "lastUpdate": "2026-06-21T10:50:04.934Z",
+  "levelNames": {
+    "L0": "0升1年级",
+    "L1": "1升2年级",
+    "L2": "2升3年级",
+    "L3": "3升4年级",
+    "L4": "4升5年级"
+  },
+  "levels": [
+    "L0",
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+  ],
+  "levelHidden": {}
 }

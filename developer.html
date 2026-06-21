@@ -37,6 +37,8 @@
         <div class="main-content">
             <div class="sidebar">
                 <button class="nav-btn active" data-section="outline">课程大纲管理</button>
+                <button class="nav-btn" data-section="subjects">学科管理</button>
+                <button class="nav-btn" data-section="levels">年级管理</button>
                 <button class="nav-btn" data-section="images">重点图片管理</button>
                 <button class="nav-btn" data-section="versions">版本历史</button>
                 <button class="nav-btn" data-section="settings">系统设置</button>
@@ -54,11 +56,8 @@
                         </div>
                     </div>
 
-                    <div class="level-selector">
-                        <button class="level-btn active" data-level="L1">L1</button>
-                        <button class="level-btn" data-level="L2">L2</button>
-                        <button class="level-btn" data-level="L3">L3</button>
-                        <button class="level-btn" data-level="L4">L4</button>
+                    <div class="level-selector" id="outline-level-selector">
+                        <!-- 年级按钮将由JS动态生成 -->
                     </div>
 
                     <div class="lesson-tabs">
@@ -128,6 +127,62 @@
                     </div>
                 </div>
 
+                <div class="section-content" id="section-subjects" style="display: none;">
+                    <div class="section-header">
+                        <h2>学科管理</h2>
+                        <p class="section-hint">支持修改学科名称和隐藏学科（隐藏后老师端将看不到该学科）</p>
+                    </div>
+
+                    <div class="subject-management">
+                        <div class="subject-list" id="subject-list">
+                            <!-- 学科列表将由JS动态生成 -->
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="publish-btn" onclick="saveSubjectConfig()">保存学科配置</button>
+                    </div>
+                </div>
+
+                <div class="section-content" id="section-levels" style="display: none;">
+                    <div class="section-header">
+                        <h2>年级管理</h2>
+                        <p class="section-hint">支持更改年级名称（如L1改为"1升2年级"）和新增年级（如L0）</p>
+                    </div>
+
+                    <div class="level-management">
+                        <div class="level-list" id="level-list">
+                            <!-- 年级列表将由JS动态生成 -->
+                        </div>
+
+                        <div class="add-level-section">
+                            <h3>新增年级</h3>
+                            <div class="form-group">
+                                <label>年级显示名称</label>
+                                <input type="text" id="new-level-name" placeholder="如幼小衔接">
+                            </div>
+                            <div class="form-group">
+                                <label>应用到学科（可多选）</label>
+                                <div class="subject-checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="add-level-math" checked>
+                                        <span>数学</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="add-level-chinese" checked>
+                                        <span>语文</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="save-btn" onclick="addNewLevel()">添加年级</button>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="publish-btn" onclick="saveLevelConfig()">保存年级配置</button>
+                    </div>
+                </div>
+
                 <div class="section-content" id="section-images" style="display: none;">
                     <div class="section-header">
                         <h2>重点图片管理</h2>
@@ -139,11 +194,8 @@
                         </div>
                     </div>
 
-                    <div class="level-selector">
-                        <button class="level-btn active" data-level="L1">L1</button>
-                        <button class="level-btn" data-level="L2">L2</button>
-                        <button class="level-btn" data-level="L3">L3</button>
-                        <button class="level-btn" data-level="L4">L4</button>
+                    <div class="level-selector" id="images-level-selector">
+                        <!-- 年级按钮将由JS动态生成 -->
                     </div>
 
                     <div class="images-grid" id="images-grid">

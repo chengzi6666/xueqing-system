@@ -1,39 +1,11 @@
 {
-    "history": [
-        {
-            "version": "v5.0.0",
-            "date": "2026-06-12",
-            "subject": "both",
-            "changes": "第五版更新",
-            "description": "修复图片上传和预览问题，支持自动根据CSV文件名匹配图片"
-        },
-        {
-            "version": "v4.0.0",
-            "date": "2026-06-10",
-            "subject": "both",
-            "changes": "第四版更新",
-            "description": "优化报告生成性能，增加图片选择功能"
-        },
-        {
-            "version": "v3.0.0",
-            "date": "2026-06-08",
-            "subject": "both",
-            "changes": "第三版更新",
-            "description": "增加总体评语功能，优化界面布局"
-        },
-        {
-            "version": "v2.0.0",
-            "date": "2026-06-07",
-            "subject": "both",
-            "changes": "第二版更新",
-            "description": "增加学科选择功能，支持数学和语文切换"
-        },
-        {
-            "version": "v1.0.0",
-            "date": "2026-06-06",
-            "subject": "both",
-            "changes": "初始版本发布",
-            "description": "创建数学和语文两个学科的课程大纲，包含L1-L4四个等级，每等级5讲内容"
-        }
-    ]
+  "history": [
+    {
+      "version": "v5.0.5",
+      "date": "2026-06-21",
+      "subject": "both",
+      "changes": "修复年级配置问题",
+      "description": "将0升1年级关联到L0，修复数学学科出现0升1年级的问题"
+    }
+  ]
 }

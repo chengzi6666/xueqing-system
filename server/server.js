@@ -387,6 +387,57 @@ app.post('/api/version', (req, res) => {
     }
 });
 
+// 删除版本
+app.delete('/api/version/:version', (req, res) => {
+    try {
+        const version = req.params.version;
+        
+        // 读取版本历史
+        const data = fs.readFileSync(VERSION_FILE, 'utf8');
+        const versionHistory = JSON.parse(data);
+        
+        // 检查是否只有一个版本
+        if (versionHistory.history.length <= 1) {
+            return res.status(400).json({ error: '至少需要保留一个版本' });
+        }
+        
+        // 检查是否是当前版本
+        let configData = {};
+        try {
+            configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        } catch (e) {
+            console.log('配置文件不存在');
+        }
+        
+        if (configData.currentVersion === version) {
+            return res.status(400).json({ error: '不能删除当前正在使用的版本' });
+        }
+        
+        // 删除版本记录
+        versionHistory.history = versionHistory.history.filter(v => v.version !== version);
+        
+        // 删除对应的历史数据文件
+        const historyFile = path.join(HISTORY_DIR, `${version}.json`);
+        if (fs.existsSync(historyFile)) {
+            fs.unlinkSync(historyFile);
+        }
+        
+        fs.writeFileSync(VERSION_FILE, JSON.stringify(versionHistory, null, 2));
+        
+        const now = new Date().toISOString();
+        console.log(`[${now}] 版本 ${version} 已删除`);
+        
+        res.json({ 
+            success: true, 
+            message: `版本 ${version} 已删除`,
+            versionHistory: versionHistory
+        });
+    } catch (error) {
+        console.error('删除版本失败:', error);
+        res.status(500).json({ error: '删除版本失败' });
+    }
+});
+
 // 获取指定版本的大纲数据
 app.get('/api/version/:version/outline', (req, res) => {
     try {
@@ -556,6 +607,50 @@ app.post('/api/upload-image', upload.array('images', 10), (req, res) => {
     }
 });
 
+// 删除图片接口
+app.delete('/api/image/:filename', (req, res) => {
+    try {
+        const filename = decodeURIComponent(req.params.filename);
+        const imagesDir = path.join(__dirname, '../images');
+        const publicImagesDir = path.join(__dirname, 'public', 'images');
+        const deployTempDir = path.join(__dirname, '../deploy_temp/images');
+        
+        let deleted = false;
+        
+        const possiblePaths = [
+            path.join(imagesDir, filename),
+            path.join(publicImagesDir, filename),
+            path.join(deployTempDir, filename)
+        ];
+        
+        for (const filePath of possiblePaths) {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                deleted = true;
+                break;
+            }
+        }
+        
+        if (deleted) {
+            res.json({
+                success: true,
+                message: `图片 ${filename} 删除成功`
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: `图片 ${filename} 不存在`
+            });
+        }
+    } catch (error) {
+        console.error('删除图片失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '删除图片失败: ' + error.message
+        });
+    }
+});
+
 // 头像上传接口
 app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
     try {
@@ -576,6 +671,53 @@ app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
             success: false,
             message: '头像上传失败: ' + error.message
         });
+    }
+});
+
+// 获取年级配置
+app.get('/api/levels', (req, res) => {
+    try {
+        const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        res.json({
+            levels: configData.levels || ['L1', 'L2', 'L3', 'L4'],
+            levelNames: configData.levelNames || {},
+            levelHidden: configData.levelHidden || {}
+        });
+    } catch (error) {
+        res.status(500).json({ error: '获取年级配置失败' });
+    }
+});
+
+// 更新年级配置
+app.put('/api/levels', (req, res) => {
+    try {
+        const { levels, levelNames, levelHidden } = req.body;
+        const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        
+        if (levels) {
+            configData.levels = levels;
+        }
+        if (levelNames) {
+            configData.levelNames = levelNames;
+        }
+        if (levelHidden) {
+            configData.levelHidden = levelHidden;
+        }
+        configData.lastUpdate = new Date().toISOString();
+        
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(configData, null, 2));
+        
+        console.log(`[${new Date().toISOString()}] 年级配置已更新`);
+        
+        res.json({ 
+            success: true, 
+            message: '年级配置已更新',
+            levels: configData.levels,
+            levelNames: configData.levelNames
+        });
+    } catch (error) {
+        console.error('更新年级配置失败:', error);
+        res.status(500).json({ error: '更新年级配置失败' });
     }
 });
 
@@ -615,8 +757,11 @@ app.listen(PORT, () => {
     console.log(`  PUT  /api/outline/:subject - 更新指定科目大纲`);
     console.log(`  GET  /api/config           - 获取配置`);
     console.log(`  PUT  /api/config           - 更新配置`);
+    console.log(`  GET  /api/levels           - 获取年级配置`);
+    console.log(`  PUT  /api/levels           - 更新年级配置`);
     console.log(`  GET  /api/version          - 获取版本历史`);
     console.log(`  POST /api/version          - 发布新版本`);
+    console.log(`  DELETE /api/version/:version - 删除版本`);
     console.log(`  GET  /api/check-update     - 检查更新`);
     console.log(`=================================`);
     console.log(`访问地址:`);

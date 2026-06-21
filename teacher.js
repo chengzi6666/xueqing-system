@@ -11,6 +11,105 @@ let teacherAvatarDataURL = '';
 let originalAvatarImage = null;
 window.useShortName = false; // 是否只取学员名称的后两个字
 
+// 获取学科的显示名称
+function getSubjectDisplayName(subjectKey) {
+    if (outlineData[subjectKey] && outlineData[subjectKey].name) {
+        return outlineData[subjectKey].name;
+    }
+    return subjectKey === 'math' ? '数学' : '语文';
+}
+
+// 获取可用的学科列表（过滤掉隐藏的学科）
+function getAvailableSubjects() {
+    const subjects = [];
+    if (!outlineData.math || !outlineData.math.hidden) {
+        subjects.push('math');
+    }
+    if (!outlineData.chinese || !outlineData.chinese.hidden) {
+        subjects.push('chinese');
+    }
+    return subjects;
+}
+
+// 获取某个学科的年级列表（优先使用学科的自定义列表，否则用全局列表），并过滤隐藏的年级
+function getSubjectLevels(subject) {
+    let levels;
+    if (outlineData[subject] && outlineData[subject].levels && outlineData[subject].levels.length > 0) {
+        levels = outlineData[subject].levels;
+    } else {
+        levels = levelConfig.levels || ['L1', 'L2', 'L3', 'L4'];
+    }
+    
+    // 过滤隐藏的年级
+    return levels.filter(level => !isLevelHidden(level));
+}
+
+// 渲染年级按钮
+function renderLevelButtons() {
+    const container = document.getElementById('teacher-level-selector');
+    if (!container) return;
+    
+    const levels = getSubjectLevels(currentSubject);
+    
+    // 如果当前年级不在该学科的列表中或被隐藏，切换到第一个
+    if (levels.length > 0 && !levels.includes(currentLevel)) {
+        currentLevel = levels[0];
+    }
+    
+    if (levels.length === 0) {
+        container.innerHTML = '<span style="color: #999;">暂无年级配置</span>';
+        return;
+    }
+    
+    container.innerHTML = levels.map(level => {
+        const displayName = levelConfig.levelNames[level] || level;
+        const isActive = level === currentLevel;
+        return `<button class="level-btn ${isActive ? 'active' : ''}" data-level="${level}">${displayName}</button>`;
+    }).join('');
+    
+    // 重新绑定点击事件
+    container.querySelectorAll('.level-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentLevel = this.dataset.level;
+            updateUI();
+        });
+    });
+}
+
+// 渲染学科按钮
+function renderSubjectButtons() {
+    const container = document.getElementById('subject-switch');
+    if (!container) return;
+    
+    const availableSubjects = getAvailableSubjects();
+    
+    if (availableSubjects.length === 0) {
+        container.innerHTML = '<span style="color: #999;">暂无可用学科</span>';
+        return;
+    }
+    
+    container.innerHTML = availableSubjects.map(subjectKey => {
+        const displayName = getSubjectDisplayName(subjectKey);
+        const isActive = subjectKey === currentSubject;
+        return `<button class="subject-btn ${isActive ? 'active' : ''}" data-subject="${subjectKey}">${displayName}</button>`;
+    }).join('');
+    
+    // 重新绑定点击事件
+    container.querySelectorAll('.subject-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentSubject = this.dataset.subject;
+            updateUI();
+        });
+    });
+}
+
+// 年级配置
+let levelConfig = {
+    levels: ['L1', 'L2', 'L3', 'L4'],
+    levelNames: {},
+    levelHidden: {}
+};
+
 // 版本更新相关
 let currentVersion = '';
 let updateCheckInterval = null;
@@ -240,6 +339,11 @@ function toggleImageSelection(filename, index) {
         img.selected = !img.selected;
         renderImageSelectorList();
         saveImageSelectionPreference();
+        
+        // 选择图片后自动更新右侧报告
+        if (Object.keys(studentData).length > 0) {
+            renderReportCards();
+        }
     }
 }
 
@@ -249,6 +353,11 @@ function selectAllImages() {
     images.forEach(img => img.selected = true);
     renderImageSelectorList();
     saveImageSelectionPreference();
+    
+    // 选择图片后自动更新右侧报告
+    if (Object.keys(studentData).length > 0) {
+        renderReportCards();
+    }
 }
 
 // 取消全选
@@ -257,6 +366,11 @@ function deselectAllImages() {
     images.forEach(img => img.selected = false);
     renderImageSelectorList();
     saveImageSelectionPreference();
+    
+    // 取消选择后自动更新右侧报告
+    if (Object.keys(studentData).length > 0) {
+        renderReportCards();
+    }
 }
 
 // 保存选择偏好到 localStorage
@@ -408,6 +522,7 @@ async function saveUploadedImages() {
 }
 
 let versionHistory = [
+    { version: 'v5.0.1', date: '2026-06-14', description: '测试版本发布' },
     { version: 'v5.0.0', date: '2026-06-13', description: '第五版更新 - 修复图片上传和预览问题' },
     { version: 'v4.0.0', date: '2026-06-10', description: '第四版更新 - 优化报告生成性能' },
     { version: 'v3.0.0', date: '2026-06-08', description: '第三版更新 - 增加总体评语功能' },
@@ -680,6 +795,47 @@ function toggleShortName() {
     }
 }
 
+// 加载年级配置
+async function loadLevelConfig() {
+    try {
+        // 优先从API加载
+        if (API_BASE_URL) {
+            const response = await fetch(`${API_BASE_URL}/levels`);
+            if (response.ok) {
+                const data = await response.json();
+                levelConfig.levels = data.levels || ['L1', 'L2', 'L3', 'L4'];
+                levelConfig.levelNames = data.levelNames || {};
+                levelConfig.levelHidden = data.levelHidden || {};
+                console.log('年级配置加载成功:', levelConfig);
+                return;
+            }
+        }
+        
+        // 从configData中获取
+        if (configData && configData.levels) {
+            levelConfig.levels = configData.levels;
+            levelConfig.levelNames = configData.levelNames || {};
+            levelConfig.levelHidden = configData.levelHidden || {};
+        }
+        console.log('年级配置:', levelConfig);
+    } catch (e) {
+        console.error('加载年级配置失败:', e);
+        levelConfig.levels = ['L1', 'L2', 'L3', 'L4'];
+        levelConfig.levelNames = {};
+        levelConfig.levelHidden = {};
+    }
+}
+
+// 获取年级的显示名称
+function getLevelDisplayName(level) {
+    return levelConfig.levelNames[level] || level;
+}
+
+// 检查年级是否被隐藏
+function isLevelHidden(level) {
+    return levelConfig.levelHidden?.[level] || false;
+}
+
 async function loadData() {
     try {
         console.log('✅ 开始加载数据...');
@@ -764,6 +920,9 @@ async function loadData() {
             }
         }
         console.log('配置数据加载成功:', configData);
+        
+        // 加载年级配置
+        await loadLevelConfig();
         
         // 保存当前版本号（用于检查更新）
         currentVersion = configData.currentVersion || 'v1.0.0';
@@ -888,6 +1047,11 @@ function parseKeyPoints(keyPointsStr) {
 }
 
 function updateUI() {
+    // 渲染学科按钮
+    renderSubjectButtons();
+    // 渲染年级按钮
+    renderLevelButtons();
+    
     document.querySelectorAll('.subject-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.subject === currentSubject);
     });
@@ -899,6 +1063,12 @@ function updateUI() {
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.mode === currentMode);
     });
+    
+    // 切换到总体评语模式时，自动根据CSV文件名匹配图片
+    if (currentMode === 'overall' && uploadedFiles.length > 0) {
+        const lectures = parseLecturesFromFilenames(uploadedFiles);
+        autoSelectImagesByLectures(lectures);
+    }
     
     // 如果已经生成了报告，重新渲染以更新内容
     if (Object.keys(studentData).length > 0) {
@@ -974,7 +1144,7 @@ function autoSelectImagesByLectures(lectures) {
     availableImages.forEach(img => img.selected = false);
     
     // 选中指定讲次的图片
-    const subjectName = currentSubject === 'math' ? '数学' : '语文';
+    const subjectName = getSubjectDisplayName(currentSubject);
     availableImages.forEach(img => {
         if (img.subject === subjectName && img.level === currentLevel && lectures.includes(img.lecture)) {
             img.selected = true;
@@ -1185,25 +1355,41 @@ async function generateReports() {
             const renamedData = await showDuplicateStudentDialog();
             console.log('重名处理完成，返回数据:', renamedData);
             if (renamedData) {
+                // 按讲次和原始名字分组重命名数据
+                const renamedByLessonAndName = {};
+                renamedData.forEach(r => {
+                    const key = `${r.lesson}_${r.originalName}`;
+                    if (!renamedByLessonAndName[key]) {
+                        renamedByLessonAndName[key] = [];
+                    }
+                    renamedByLessonAndName[key].push(r);
+                });
+                
                 // 更新数据中的姓名：保留原始姓名用于显示，添加displayName用于文件名
                 allParsedData = allParsedData.map(item => ({
                     lessonNum: item.lessonNum,
                     data: item.data.map(student => {
-                        // 根据讲次和学员信息匹配重命名数据
-                        const renamed = renamedData.find(r => 
-                            r.lesson === item.lessonNum &&
-                            r.originalName === student.name &&
-                            r.objectiveAccuracy === student.objectiveAccuracy &&
-                            r.interactionRate === student.interactionRate &&
-                            r.totalMinutes === student.totalMinutes
-                        );
-                        if (renamed) {
-                            // 原始姓名保持不变（用于显示），displayName用于文件名
-                            return { 
-                                ...student, 
-                                originalName: student.name,
-                                displayName: renamed.newName
-                            };
+                        const key = `${item.lessonNum}_${student.name}`;
+                        const renamedList = renamedByLessonAndName[key];
+                        
+                        if (renamedList && renamedList.length > 0) {
+                            // 找到匹配的重命名数据（按顺序匹配，确保每个学员都能被正确重命名）
+                            for (let i = 0; i < renamedList.length; i++) {
+                                const r = renamedList[i];
+                                // 检查数据是否匹配
+                                if (r.objectiveAccuracy === student.objectiveAccuracy &&
+                                    r.interactionRate === student.interactionRate &&
+                                    r.totalMinutes === student.totalMinutes) {
+                                    // 移除已使用的重命名数据，确保不会重复使用
+                                    renamedList.splice(i, 1);
+                                    // 原始姓名保持不变（用于显示），displayName用于文件名
+                                    return { 
+                                        ...student, 
+                                        originalName: student.name,
+                                        displayName: r.newName
+                                    };
+                                }
+                            }
                         }
                         return student;
                     })
@@ -1351,17 +1537,16 @@ function parseCSV(text) {
         h.includes('正确率') || h.includes('正确') || 
         h.includes('客观题') || h.includes('答题') || h.includes('得分')
     );
-    const replayIndex = headers.findIndex(h => h.includes('回放') || h.includes('回看') || h.includes('复习'));
+    // 只匹配"回放时长"
+    const replayIndex = headers.findIndex(h => h.includes('回放时长'));
     const participationIndex = headers.findIndex(h => 
         h.includes('参与率') || h.includes('互动率') || 
         h.includes('互动参与') || h.includes('课堂参与')
     );
-    const attendanceIndex = headers.findIndex(h => 
-        h.includes('出勤') || h.includes('时长') || 
-        h.includes('直播') || h.includes('听课')
-    );
+    // 只匹配"直播出勤时长"
+    const attendanceIndex = headers.findIndex(h => h.includes('直播出勤时长'));
     
-    console.log('列索引：姓名=', nameIndex, ', 正确率=', accuracyIndex, ', 回放=', replayIndex, ', 参与率=', participationIndex, ', 出勤=', attendanceIndex);
+    console.log('列索引：姓名=', nameIndex, ', 正确率=', accuracyIndex, ', 回放时长=', replayIndex, ', 参与率=', participationIndex, ', 直播出勤时长=', attendanceIndex);
     
     // 如果找不到正确率列，尝试找包含%的列
     let finalAccuracyIndex = accuracyIndex;
@@ -1397,26 +1582,21 @@ function parseCSV(text) {
             continue;
         }
         
-        // 解析时长（尝试多个列）
+        // 解析时长（只使用直播出勤时长和回放时长两列）
         let totalMinutes = 0;
         
-        // 尝试出勤列
+        // 直播出勤时长列
         if (attendanceIndex !== -1 && attendanceIndex < values.length) {
             const attendanceStr = values[attendanceIndex] || '';
             totalMinutes += parseDuration(attendanceStr);
         }
-        // 尝试回放列
+        // 回放时长列
         if (replayIndex !== -1 && replayIndex < values.length) {
             const replayStr = values[replayIndex] || '';
             totalMinutes += parseDuration(replayStr);
         }
         
-        // 如果还没找到时长，尝试在所有列中查找
-        if (totalMinutes === 0) {
-            for (const val of values) {
-                totalMinutes += parseDuration(val);
-            }
-        }
+        console.log(`学员 ${studentName} 听课时长: 直播=${attendanceIndex !== -1 ? values[attendanceIndex] : '无'}, 回放=${replayIndex !== -1 ? values[replayIndex] : '无'}, 合计=${totalMinutes}分钟`);
         
         // 解析正确率
         let accuracy = 0;
@@ -1553,11 +1733,14 @@ function showDuplicateStudentDialog() {
                         originalName: dup.name,
                         lesson: lessonInfo.lesson,
                         record: record,
-                        index: allRenameRecords.length
+                        globalIndex: allRenameRecords.length // 直接使用当前长度作为索引
                     });
                 });
             });
         });
+        
+        // 保存到全局变量，供确认时使用
+        window.allRenameRecords = allRenameRecords;
         
         // 创建弹窗
         const dialog = document.createElement('div');
@@ -1565,40 +1748,41 @@ function showDuplicateStudentDialog() {
         dialog.innerHTML = `
             <div class="dialog-content">
                 <h3>⚠️ 检测到重名学员</h3>
-                <p style="margin-bottom: 10px;">在同一个表格中出现两个一模一样的学员姓名，请为这些学员添加区分标识：</p>
-                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">提示：系统会自动在姓名后添加后缀（如 _A, _B），您也可以自定义名称</p>
+                <p style="margin-bottom: 10px;">请为同名学员添加区分（如：张三_A、张三_B）</p>
+                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                    • 页面和文件名：显示带后缀<br>
+                    • 下载图片内：显示原名
+                </p>
                 <div class="duplicate-list" style="max-height: 400px; overflow-y: auto;">
-                    ${duplicates.map((dup, dupIndex) => `
-                        <div class="duplicate-item" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-                            <h4 style="margin-bottom: 10px;">👨‍🎓 ${dup.name}</h4>
-                            ${dup.lessons.map(lessonInfo => `
-                                <div style="margin-left: 10px; margin-top: 10px;">
-                                    <span style="font-weight: bold; color: #666;">📋 ${lessonInfo.lesson}（出现 ${lessonInfo.count} 次）</span>
-                                    ${lessonInfo.records.map((record, recordIndex) => {
-                                        const globalIndex = allRenameRecords.findIndex(r => 
-                                            r.originalName === dup.name && 
-                                            r.lesson === lessonInfo.lesson && 
-                                            r.record.objectiveAccuracy === record.objectiveAccuracy &&
-                                            r.record.interactionRate === record.interactionRate
-                                        );
-                                        return `
-                                            <div class="rename-row" style="display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px; background: white; border-radius: 4px;">
-                                                <span class="record-data" style="flex: 1; font-size: 13px;">正确率：${record.objectiveAccuracy || 0}% | 参与率：${record.interactionRate || 0}% | 时长：${record.totalMinutes || 0}分钟</span>
-                                                <input type="text" 
-                                                    class="rename-input"
-                                                    data-original="${dup.name}"
-                                                    data-lesson="${lessonInfo.lesson}"
-                                                    data-global-index="${globalIndex}"
-                                                    value="${dup.name}_${String.fromCharCode(65 + recordIndex)}"
-                                                    placeholder="输入新名称"
-                                                    style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; width: 120px;">
-                                            </div>
-                                        `;
-                                    }).join('')}
-                                </div>
-                            `).join('')}
-                        </div>
-                    `).join('')}
+                    ${(() => {
+                        let recordCounter = 0;
+                        return duplicates.map((dup, dupIndex) => `
+                            <div class="duplicate-item" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                                <h4 style="margin-bottom: 10px;">👨‍🎓 ${dup.name}</h4>
+                                ${dup.lessons.map(lessonInfo => `
+                                    <div style="margin-left: 10px; margin-top: 10px;">
+                                        <span style="font-weight: bold; color: #666;">📋 ${lessonInfo.lesson}（出现 ${lessonInfo.count} 次）</span>
+                                        ${lessonInfo.records.map((record, recordIndex) => {
+                                            const globalIndex = recordCounter++;
+                                            return `
+                                                <div class="rename-row" style="display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px; background: white; border-radius: 4px;">
+                                                    <span class="record-data" style="flex: 1; font-size: 13px;">正确率：${record.objectiveAccuracy || 0}% | 参与率：${record.interactionRate || 0}% | 时长：${record.totalMinutes || 0}分钟</span>
+                                                    <input type="text" 
+                                                        class="rename-input"
+                                                        data-original="${dup.name}"
+                                                        data-lesson="${lessonInfo.lesson}"
+                                                        data-global-index="${globalIndex}"
+                                                        value="${dup.name}_${String.fromCharCode(65 + recordIndex)}"
+                                                        placeholder="输入新名称"
+                                                        style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; width: 120px;">
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('');
+                    })()}
                 </div>
                 <div class="dialog-actions">
                     <button class="dialog-btn secondary" onclick="cancelDuplicateDialog()">取消</button>
@@ -1624,25 +1808,20 @@ function showDuplicateStudentDialog() {
                 const originalName = input.dataset.original;
                 const newName = input.value.trim();
                 const lesson = input.dataset.lesson;
+                const globalIndex = parseInt(input.dataset.globalIndex);
                 
-                if (newName) {
-                    // 找到对应的记录
-                    const dup = duplicates.find(d => d.name === originalName);
-                    if (dup) {
-                        const lessonInfo = dup.lessons.find(l => l.lesson === lesson);
-                        if (lessonInfo) {
-                            // 找到对应的原始记录
-                            lessonInfo.records.forEach(record => {
-                                renamedData.push({
-                                    originalName: originalName,
-                                    newName: newName,
-                                    lesson: lesson,
-                                    objectiveAccuracy: record.objectiveAccuracy,
-                                    interactionRate: record.interactionRate,
-                                    totalMinutes: record.totalMinutes
-                                });
-                            });
-                        }
+                if (newName && globalIndex >= 0) {
+                    // 直接从 window.allRenameRecords 中获取对应的记录
+                    const renameRecord = window.allRenameRecords[globalIndex];
+                    if (renameRecord) {
+                        renamedData.push({
+                            originalName: originalName, // 原始名字（不带后缀），用于下载图片内容显示
+                            newName: newName, // 带后缀的名字，用于页面显示和文件名
+                            lesson: lesson,
+                            objectiveAccuracy: renameRecord.record.objectiveAccuracy,
+                            interactionRate: renameRecord.record.interactionRate,
+                            totalMinutes: renameRecord.record.totalMinutes
+                        });
                     }
                 }
             });
@@ -1695,7 +1874,12 @@ function showStudentNameDialog(studentNames, data) {
     dialog.className = 'student-name-dialog';
     dialog.innerHTML = `
         <div class="dialog-content">
-            <h3>学员名称提示</h3>
+            <h3>检测到学员名称为占位符，请命名</h3>
+            <p style="margin-bottom: 10px;">（如：宝宝1、宝宝2）</p>
+            <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                • 页面和文件名：显示带编号<br>
+                • 下载图片内：显示原名
+            </p>
             <p>发现以下学员名称包含"学员"：</p>
             <div class="student-names-list">
                 ${studentNames.map(name => `<span class="student-name-item">${name}</span>`).join('')}
@@ -1721,14 +1905,40 @@ function showStudentNameDialog(studentNames, data) {
 }
 
 function useDefaultStudentName() {
+    // 按原始学员名分组，每个不同的原始学员名分配一个编号
+    const originalNameMap = {};
+    let counter = 1;
+    
     window.currentStudentData.forEach(student => {
         if (student.name.includes('学员')) {
-            student.name = '学而思学员';
+            const originalName = student.name;
+            
+            // 如果这个原始学员名还没有分配编号，则分配一个新编号
+            if (!originalNameMap[originalName]) {
+                originalNameMap[originalName] = counter;
+                counter++;
+            }
+            
+            // 使用分配的编号命名
+            const newName = `学而思学员${originalNameMap[originalName]}`;
+            student.name = newName;
+            student.displayName = newName;
+            student.originalName = '学而思学员'; // 下载图片内容显示"学而思学员"（不带数字）
         }
     });
+    
+    // 保存映射关系，用于后续匹配
+    window.studentNameMapping = originalNameMap;
+    
     document.body.removeChild(window.studentNameDialog);
     studentNameDialogResolved = true;
-    alert('已统一使用"学而思学员"作为学员名称');
+    
+    // 显示映射关系提示
+    const mappingInfo = Object.entries(originalNameMap)
+        .map(([original, num]) => `${original} → 学而思学员${num}`)
+        .join('\n');
+    console.log('学员名称映射关系:\n' + mappingInfo);
+    alert(`已自动命名为"学而思学员1"、"学而思学员2"等\n\n映射关系:\n${mappingInfo}`);
 }
 
 function keepOriginalStudentName() {
@@ -1748,15 +1958,40 @@ function applyCustomStudentName() {
         return;
     }
     
+    // 按原始学员名分组，每个不同的原始学员名分配一个编号
+    const originalNameMap = {};
+    let counter = 1;
+    
     window.currentStudentData.forEach(student => {
         if (student.name.includes('学员')) {
-            student.name = customName;
+            const originalRawName = student.name; // 原始带乱码的学员名
+            
+            // 如果这个原始学员名还没有分配编号，则分配一个新编号
+            if (!originalNameMap[originalRawName]) {
+                originalNameMap[originalRawName] = counter;
+                counter++;
+            }
+            
+            // 使用分配的编号命名
+            const newName = `${customName}${originalNameMap[originalRawName]}`;
+            student.name = newName;
+            student.displayName = newName; // 带编号的名字，用于页面显示和文件名
+            student.originalName = customName; // 不带编号的名字，用于下载图片内容显示
         }
     });
     
+    // 保存映射关系，用于后续匹配
+    window.studentNameMapping = originalNameMap;
+    
     document.body.removeChild(window.studentNameDialog);
     studentNameDialogResolved = true;
-    alert(`已统一使用"${customName}"作为学员名称`);
+    
+    // 显示映射关系提示
+    const mappingInfo = Object.entries(originalNameMap)
+        .map(([original, num]) => `${original} → ${customName}${num}`)
+        .join('\n');
+    console.log('学员名称映射关系:\n' + mappingInfo);
+    alert(`已自动命名为"${customName}1"、"${customName}2"等\n\n映射关系:\n${mappingInfo}`);
 }
 
 function formatTime(minutes) {
@@ -1785,6 +2020,10 @@ function renderReportCards() {
             
             students.forEach(student => {
                 console.log('学生:', student);
+                console.log('学生属性:', Object.keys(student));
+                console.log('student.originalName:', student.originalName);
+                console.log('student.displayName:', student.displayName);
+                console.log('student.name:', student.name);
                 
                 // 尝试从文件名中提取讲次数字
                 let lessonNum = lesson;
@@ -1806,7 +2045,7 @@ function renderReportCards() {
                     }
                     // 如果找不到，尝试遍历所有级别
                     if (!lessonData) {
-                        for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                        for (const level of levelConfig.levels) {
                             if (lessons[level] && lessons[level][lessonNum]) {
                                 lessonData = lessons[level][lessonNum];
                                 break;
@@ -1818,7 +2057,7 @@ function renderReportCards() {
                 // 如果还是找不到，创建默认的课程数据
                 if (!lessonData) {
                     console.warn(`未找到课程数据: ${currentSubject}-${currentLevel}-${lessonNum}`);
-                    const subjectName = currentSubject === 'math' ? '数学' : '语文';
+                    const subjectName = getSubjectDisplayName(currentSubject);
                     lessonData = {
                         title: `第${lessonNum}讲`,
                         keyPoints: [],
@@ -1832,7 +2071,9 @@ function renderReportCards() {
                 const comment = generateComment(student, lessonData, lesson);
                 // 使用displayName（如果存在）作为文件名，否则使用name
                 const displayName = student.displayName || student.name;
-                const cardData = { student, lesson, lessonData, comment, displayName };
+                // 确保 originalName 被正确传递
+                const originalName = student.originalName || student.name;
+                const cardData = { student, lesson, lessonData, comment, displayName, originalName };
                 allReportCards.push(cardData);
                 cards.push(createReportCard(cardData));
             });
@@ -1842,18 +2083,36 @@ function renderReportCards() {
         const studentMap = {};
         Object.entries(studentData).forEach(([lesson, students]) => {
             students.forEach(student => {
-                // 使用displayName（如果存在）作为文件名，否则使用name
                 const displayName = student.displayName || student.name;
-                const key = displayName; // 用displayName作为map的key
+                const originalName = student.originalName || student.name;
                 
-                if (!studentMap[key]) {
-                    studentMap[key] = { 
-                        name: student.name, // 原始姓名用于显示
-                        displayName: displayName, // 区分后姓名用于文件名
+                // 判断是否已被映射命名（displayName != originalName 说明用户已区分）
+                const isMapped = displayName !== originalName;
+                
+                // 判断是否是原始占位符（未被映射，且名字包含"学员"或"学生"）
+                const isOriginalPlaceholder = !isMapped && (displayName.includes('学员') || displayName.includes('学生'));
+                
+                let uniqueKey;
+                if (isMapped) {
+                    // 已被映射命名（如"学而思学员1"、"泽泽_A"），用displayName作为唯一标识
+                    uniqueKey = displayName;
+                } else if (isOriginalPlaceholder) {
+                    // 原始占位符（如"学员_ABC123"），用数据组合来区分
+                    uniqueKey = `${displayName}_${student.totalMinutes}_${student.objectiveAccuracy}_${student.interactionRate}`;
+                } else {
+                    // 真实学员名（如"张三"），用displayName作为唯一标识
+                    uniqueKey = displayName;
+                }
+                
+                if (!studentMap[uniqueKey]) {
+                    studentMap[uniqueKey] = { 
+                        name: student.name,
+                        displayName: displayName,
+                        originalName: originalName,
                         records: [] 
                     };
                 }
-                studentMap[key].records.push({ lesson, ...student });
+                studentMap[uniqueKey].records.push({ lesson, ...student });
             });
         });
 
@@ -1871,6 +2130,7 @@ function renderReportCards() {
             const cardData = { 
                 student, 
                 displayName: student.displayName,
+                originalName: student.originalName,
                 avgAccuracy, 
                 avgTotalTime, 
                 avgParticipation, 
@@ -1897,7 +2157,48 @@ function createEmptyState() {
 
 async function downloadSingleReport(studentName, lesson) {
     const card = document.getElementById(`report-${studentName}-${lesson}`);
-    if (!card) return;
+    if (!card) {
+        console.error('找不到卡片:', `report-${studentName}-${lesson}`);
+        return;
+    }
+    
+    // 获取原始名字用于下载图片内容显示
+    const displayName = card.dataset.displayName || studentName;
+    let originalName = card.dataset.originalName || studentName;
+    
+    console.log('下载调试信息:');
+    console.log('  studentName:', studentName);
+    console.log('  card.dataset.displayName:', card.dataset.displayName);
+    console.log('  card.dataset.originalName:', card.dataset.originalName);
+    console.log('  displayName:', displayName);
+    console.log('  originalName (before):', originalName);
+    
+    // 对于学而思学员或自定义命名学员，强制提取不带数字的原始名字
+    if (displayName.includes('学而思学员') && displayName.match(/学而思学员\d+/)) {
+        originalName = '学而思学员';
+        console.log('  检测到学而思学员，强制设置 originalName:', originalName);
+    }
+    // 检测自定义命名学员格式：任意名字后跟数字（如 张三1、李四2 等）
+    // 使用 card.dataset.originalName，不需要额外的条件判断
+    const customNameMatch = displayName.match(/^(.+?)(\d+)$/);
+    if (customNameMatch && card.dataset.originalName) {
+        originalName = card.dataset.originalName;
+        console.log('  检测到自定义命名学员，使用 originalName:', originalName);
+    }
+    
+    console.log('  originalName (after):', originalName);
+    console.log('  displayName !== originalName:', displayName !== originalName);
+    
+    // 临时将学员名字改为原始名字（用于下载图片内容显示）
+    const studentNameEl = card.querySelector('.student-display-name');
+    const originalDisplayName = studentNameEl ? studentNameEl.textContent : '';
+    console.log('  studentNameEl:', studentNameEl);
+    console.log('  studentNameEl.textContent:', originalDisplayName);
+    
+    if (studentNameEl && displayName !== originalName) {
+        studentNameEl.textContent = originalName;
+        console.log('  已将学员名字改为:', originalName);
+    }
     
     try {
         // 隐藏下载按钮
@@ -1921,7 +2222,6 @@ async function downloadSingleReport(studentName, lesson) {
                     img.onload = () => {
                         loadedCount++;
                         if (loadedCount === images.length) {
-                            // 等待一小段时间确保渲染完成
                             setTimeout(resolve, 100);
                         }
                     };
@@ -1953,6 +2253,11 @@ async function downloadSingleReport(studentName, lesson) {
             letterRendering: true,
             useForeignObjectRendering: false
         });
+        
+        // 恢复学员名字显示
+        if (studentNameEl) {
+            studentNameEl.textContent = originalDisplayName;
+        }
         
         // 恢复下载按钮显示
         if (downloadBtn) {
@@ -1965,6 +2270,10 @@ async function downloadSingleReport(studentName, lesson) {
         link.click();
     } catch (e) {
         console.error('下载失败:', e);
+        // 恢复学员名字显示
+        if (studentNameEl) {
+            studentNameEl.textContent = originalDisplayName;
+        }
         alert('下载失败，请重试');
     }
 }
@@ -1972,6 +2281,28 @@ async function downloadSingleReport(studentName, lesson) {
 async function downloadOverallReport(studentName) {
     const card = document.getElementById(`report-${studentName}-overall`);
     if (!card) return;
+    
+    // 获取原始名字用于下载图片内容显示
+    const displayName = card.dataset.displayName || studentName;
+    let originalName = card.dataset.originalName || studentName;
+    
+    // 对于学而思学员或自定义命名学员，强制提取不带数字的原始名字
+    if (displayName.includes('学而思学员') && displayName.match(/学而思学员\d+/)) {
+        originalName = '学而思学员';
+    }
+    // 检测自定义命名学员格式：任意名字后跟数字（如 张三1、李四2 等）
+    // 使用 card.dataset.originalName，不需要额外的条件判断
+    const customNameMatch = displayName.match(/^(.+?)(\d+)$/);
+    if (customNameMatch && card.dataset.originalName) {
+        originalName = card.dataset.originalName;
+    }
+    
+    // 临时将学员名字改为原始名字（用于下载图片内容显示）
+    const studentNameEl = card.querySelector('.student-display-name');
+    const originalDisplayName = studentNameEl ? studentNameEl.textContent : '';
+    if (studentNameEl && displayName !== originalName) {
+        studentNameEl.textContent = originalName;
+    }
     
     try {
         // 隐藏下载按钮
@@ -2027,6 +2358,11 @@ async function downloadOverallReport(studentName) {
             useForeignObjectRendering: false
         });
         
+        // 恢复学员名字显示
+        if (studentNameEl) {
+            studentNameEl.textContent = originalDisplayName;
+        }
+        
         // 恢复下载按钮显示
         if (downloadBtn) {
             downloadBtn.style.display = 'block';
@@ -2038,6 +2374,10 @@ async function downloadOverallReport(studentName) {
         link.click();
     } catch (e) {
         console.error('下载失败:', e);
+        // 恢复学员名字显示
+        if (studentNameEl) {
+            studentNameEl.textContent = originalDisplayName;
+        }
         alert('下载失败，请重试');
     }
 }
@@ -2072,6 +2412,40 @@ async function downloadAllReports() {
             const downloadBtnCard = card.querySelector('.download-btn-no-print');
             if (downloadBtnCard) {
                 downloadBtnCard.style.display = 'none';
+            }
+            
+            // 获取原始名字用于下载图片内容显示
+            const displayName = card.dataset.displayName || cardData.displayName;
+            let originalName = card.dataset.originalName || cardData.student.originalName || cardData.student.name;
+            
+            console.log('downloadAllReports 调试:');
+            console.log('  displayName:', displayName);
+            console.log('  card.dataset.originalName:', card.dataset.originalName);
+            console.log('  cardData.student.originalName:', cardData.student.originalName);
+            console.log('  originalName (初始):', originalName);
+            
+            // 对于学而思学员或自定义命名学员，强制提取不带数字的原始名字
+            if (displayName.includes('学而思学员') && displayName.match(/学而思学员\d+/)) {
+                originalName = '学而思学员';
+            }
+            // 检测自定义命名学员格式：任意名字后跟数字（如 张三1、李四2 等）
+            // 使用 card.dataset.originalName，不需要额外的条件判断
+            const customNameMatch = displayName.match(/^(.+?)(\d+)$/);
+            console.log('  customNameMatch:', customNameMatch);
+            if (customNameMatch && card.dataset.originalName) {
+                originalName = card.dataset.originalName;
+            }
+            
+            console.log('  originalName (最终):', originalName);
+            
+            // 临时将学员名字改为原始名字（用于下载图片内容显示）
+            const studentNameEl = card.querySelector('.student-display-name');
+            const originalDisplayName = studentNameEl ? studentNameEl.textContent : '';
+            console.log('  studentNameEl:', studentNameEl);
+            console.log('  originalDisplayName:', originalDisplayName);
+            if (studentNameEl && displayName !== originalName) {
+                studentNameEl.textContent = originalName;
+                console.log('  已将学员名字改为:', originalName);
             }
             
             // 等待所有图片加载完成
@@ -2115,6 +2489,11 @@ async function downloadAllReports() {
                 letterRendering: true,
                 useForeignObjectRendering: false
             });
+            
+            // 恢复学员名字显示
+            if (studentNameEl) {
+                studentNameEl.textContent = originalDisplayName;
+            }
             
             // 恢复下载按钮显示
             if (downloadBtnCard) {
@@ -2172,7 +2551,7 @@ function generateKeyPointsSummary(records) {
             
             // 如果找不到，尝试遍历所有级别
             if (!lessonData) {
-                for (const level of ['L1', 'L2', 'L3', 'L4']) {
+                for (const level of levelConfig.levels) {
                     if (lessons[level] && lessons[level][lessonNum]) {
                         lessonData = lessons[level][lessonNum];
                         break;
@@ -2313,24 +2692,48 @@ function generateOverallComment(name, avgAccuracy, avgTotalTime, avgParticipatio
 }
 
 function createReportCard(cardData) {
-    const { student, lesson, lessonData, comment, displayName } = cardData;
+    const { student, lesson, lessonData, comment, displayName, originalName: cardDataOriginalName } = cardData;
+    
+    console.log('createReportCard 调试:');
+    console.log('  student:', student);
+    console.log('  student.name:', student.name);
+    console.log('  student.displayName:', student.displayName);
+    console.log('  student.originalName:', student.originalName);
+    console.log('  cardData.originalName:', cardDataOriginalName);
+    console.log('  displayName (cardData):', displayName);
+    
+    // 对于学而思学员或自定义命名学员，自动提取不带数字的原始名字
+    // 优先使用 cardData.originalName（如果存在），否则使用 student.originalName
+    let originalName = cardDataOriginalName || student.originalName || student.name;
+    // 检测学而思学员格式：学而思学员1、学而思学员2 等
+    if (displayName.includes('学而思学员') && displayName.match(/学而思学员\d+/)) {
+        originalName = '学而思学员';
+    }
+    // 检测自定义命名学员格式：任意名字后跟数字（如 张三1、李四2 等）
+    // 使用 student.originalName，不需要额外的条件判断
+    const customNameMatch = displayName.match(/^(.+?)(\d+)$/);
+    if (customNameMatch && (cardDataOriginalName || student.originalName)) {
+        originalName = cardDataOriginalName || student.originalName; // 使用已设置的 originalName
+    }
+    
+    console.log('  originalName (最终):', originalName);
+    console.log('  即将设置的 data-original-name:', originalName);
     
     // 构建课程图片HTML
     let courseImageHtml = '';
     if (lessonData?.image) {
-        // 对中文文件名进行URL编码
         const encodedImage = encodeURIComponent(lessonData.image);
-        courseImageHtml = `<img src="api/image/${encodedImage}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
+        courseImageHtml = `<img src="${API_BASE_URL}/image/${encodedImage}" alt="课程重点" class="course-image" onerror="this.style.display='none'">`;
     }
     
     return `
-        <div class="report-image-card" id="report-${student.name}-${lesson}">
+        <div class="report-image-card" id="report-${displayName}-${lesson}" data-display-name="${displayName}" data-original-name="${originalName}">
             <div class="report-header-section">
                 <div class="report-student-info">
                     <div class="report-avatar">👨‍🎓</div>
                     <div>
-                        <h3>${student.name}</h3>
-                        <p class="report-title" contenteditable="true">${outlineData[currentSubject].subject} ${currentLevel} - ${lesson}</p>
+                        <h3 class="student-display-name">${displayName}</h3>
+                        <p class="report-title" contenteditable="true">${getSubjectDisplayName(currentSubject)} ${getLevelDisplayName(currentLevel)} - ${lesson}</p>
                     </div>
                 </div>
                 <div class="report-teacher-info">
@@ -2356,7 +2759,7 @@ function createReportCard(cardData) {
             
             <div class="report-comment-section">
                 <h4 class="comment-title" data-teacher-name="${configData.teacherName}">📝 ${configData.teacherName.replace(/老师$/, '')}老师评语</h4>
-                <div class="comment-editable" contenteditable="true" id="comment-${student.name}-${lesson}">${comment}</div>
+                <div class="comment-editable" contenteditable="true" id="comment-${displayName}-${lesson}">${comment}</div>
             </div>
             
             <div class="report-course-section">
@@ -2368,7 +2771,7 @@ function createReportCard(cardData) {
             </div>
             
             <div class="report-footer">
-                <span class="footer-brand editable-footer" contenteditable="true" data-student="${student.name}" data-lesson="${lesson}" onblur="updateAllFooterText(this)">${configData.footerText}</span>
+                <span class="footer-brand editable-footer" contenteditable="true" data-student="${displayName}" data-lesson="${lesson}" onblur="updateAllFooterText(this)">${configData.footerText}</span>
                 <span>${formatDate(new Date())}</span>
             </div>
             
@@ -2378,7 +2781,7 @@ function createReportCard(cardData) {
 }
 
 function createOverallReportCard(cardData) {
-    const { student, displayName, avgAccuracy, avgTotalTime, avgParticipation, completedLessons, keyPointsSummary, comment } = cardData;
+    const { student, displayName, originalName: cardDataOriginalName, avgAccuracy, avgTotalTime, avgParticipation, completedLessons, keyPointsSummary, comment } = cardData;
     
     // 获取用户选择的图片
     let courseImagesHtml = '';
@@ -2436,14 +2839,28 @@ function createOverallReportCard(cardData) {
         }
     }
     
+    // 对于学而思学员或自定义命名学员，自动提取不带数字的原始名字
+    // 优先使用 cardData.originalName（如果存在），否则使用 student.originalName
+    let originalName = cardDataOriginalName || student.originalName || student.name;
+    // 检测学而思学员格式：学而思学员1、学而思学员2 等
+    if (displayName.includes('学而思学员') && displayName.match(/学而思学员\d+/)) {
+        originalName = '学而思学员';
+    }
+    // 检测自定义命名学员格式：任意名字后跟数字（如 张三1、李四2 等）
+    // 使用 cardData.originalName，不需要额外的条件判断
+    const customNameMatch = displayName.match(/^(.+?)(\d+)$/);
+    if (customNameMatch && (cardDataOriginalName || student.originalName)) {
+        originalName = cardDataOriginalName || student.originalName; // 使用已设置的 originalName
+    }
+    
     return `
-        <div class="report-image-card" id="report-${student.name}-overall">
+        <div class="report-image-card" id="report-${displayName}-overall" data-display-name="${displayName}" data-original-name="${originalName}">
             <div class="report-header-section">
                 <div class="report-student-info">
                     <div class="report-avatar">👨‍🎓</div>
                     <div>
-                        <h3>${student.name}</h3>
-                        <p class="report-title" contenteditable="true">${outlineData[currentSubject].subject} ${currentLevel} - 综合学习报告</p>
+                        <h3 class="student-display-name">${displayName}</h3>
+                        <p class="report-title" contenteditable="true">${getSubjectDisplayName(currentSubject)} ${getLevelDisplayName(currentLevel)} - 综合学习报告</p>
                     </div>
                 </div>
                 <div class="report-teacher-info">
@@ -2469,7 +2886,7 @@ function createOverallReportCard(cardData) {
             
             <div class="report-comment-section">
                 <h4 class="comment-title" data-teacher-name="${configData.teacherName}">📝 ${configData.teacherName.replace(/老师$/, '')}老师评语</h4>
-                <div class="comment-editable" contenteditable="true" id="comment-${student.name}-overall">${comment}</div>
+                <div class="comment-editable" contenteditable="true" id="comment-${displayName}-overall">${comment}</div>
             </div>
             
             <div class="report-course-section">
@@ -2479,7 +2896,7 @@ function createOverallReportCard(cardData) {
             </div>
             
             <div class="report-footer">
-                <span class="footer-brand editable-footer" contenteditable="true" data-student="${student.name}" data-lesson="overall" onblur="updateAllFooterText(this)">${configData.footerText}</span>
+                <span class="footer-brand editable-footer" contenteditable="true" data-student="${displayName}" data-lesson="overall" onblur="updateAllFooterText(this)">${configData.footerText}</span>
                 <span>${formatDate(new Date())}</span>
             </div>
             

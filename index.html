@@ -22,9 +22,8 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="subject-switch">
-                    <button class="subject-btn active" data-subject="math">数学</button>
-                    <button class="subject-btn" data-subject="chinese">语文</button>
+                <div class="subject-switch" id="subject-switch">
+                    <!-- 学科按钮将由JS动态生成 -->
                 </div>
                 <button class="edit-teacher-btn" onclick="editTeacherInfo()">编辑信息</button>
             </div>
@@ -34,11 +33,8 @@
             <div class="sidebar">
                 <div class="section">
                     <h3>课程选择</h3>
-                    <div class="level-selector">
-                        <button class="level-btn active" data-level="L1">L1</button>
-                        <button class="level-btn" data-level="L2">L2</button>
-                        <button class="level-btn" data-level="L3">L3</button>
-                        <button class="level-btn" data-level="L4">L4</button>
+                    <div class="level-selector" id="teacher-level-selector">
+                        <!-- 年级按钮将由JS动态生成 -->
                     </div>
                 </div>
 

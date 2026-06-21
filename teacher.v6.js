@@ -405,6 +405,7 @@ async function saveUploadedImages() {
 }
 
 let versionHistory = [
+    { version: 'v5.0.1', date: '2026-06-14', description: '测试版本发布' },
     { version: 'v5.0.0', date: '2026-06-13', description: '第五版更新 - 修复图片上传和预览问题' },
     { version: 'v4.0.0', date: '2026-06-10', description: '第四版更新 - 优化报告生成性能' },
     { version: 'v3.0.0', date: '2026-06-08', description: '第三版更新 - 增加总体评语功能' },
