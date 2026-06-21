@@ -8,3 +8,4 @@ restartPolicyMaxRetries = 10
 
 [env]
 NIXPACKS_NPM_BUILD_COMMAND = "npm install && npm run prepare"
+SOURCE_VERSION = "f961f80"
