@@ -516,38 +516,53 @@ async function generateReports() {
         // 检测重名学员（同一个表格中出现两个一模一样的学员姓名）
         const allStudents = allParsedData.flatMap(item => item.data);
         
-        // 在每个讲次中检测重名
+        // 检测重名学员：先找出在某个表格内出现2次及以上的姓名（触发重名）
         const duplicateStudents = [];
         const duplicateStudentRecords = {}; // 存储重名学员的详细记录
         
+        // 第一步：在每个讲次内检测出现2次及以上的姓名（这些是触发重名的学员）
+        allParsedData.forEach(item => {
+            const lessonStudents = item.data;
+            
+            // 统计当前讲次中每个姓名的出现次数
+            const nameCount = {};
+            lessonStudents.forEach(student => {
+                const name = student.name;
+                if (!name.includes('学员')) {
+                    nameCount[name] = (nameCount[name] || 0) + 1;
+                }
+            });
+            
+            // 找出当前讲次内出现2次及以上的姓名
+            Object.keys(nameCount).forEach(name => {
+                if (nameCount[name] >= 2 && !duplicateStudentRecords[name]) {
+                    duplicateStudents.push(name);
+                    duplicateStudentRecords[name] = {
+                        name: name,
+                        lessons: []
+                    };
+                }
+            });
+        });
+        
+        // 第二步：为每个触发了重名的学员，收集所有讲次中的所有记录
         allParsedData.forEach(item => {
             const lessonNum = item.lessonNum;
             const lessonStudents = item.data;
             
-            // 统计当前讲次中每个姓名出现的次数
-            const nameCount = {};
+            // 收集该讲次中触发了重名的学员的记录
             lessonStudents.forEach(student => {
-                const name = student.name;
-                nameCount[name] = (nameCount[name] || 0) + 1;
-            });
-            
-            // 找出出现2次以上的姓名（排除"学员"占位符）
-            Object.keys(nameCount).forEach(name => {
-                if (nameCount[name] >= 2 && !name.includes('学员')) {
-                    // 检查是否已经记录过这个重名
-                    if (!duplicateStudentRecords[name]) {
-                        duplicateStudentRecords[name] = {
-                            name: name,
-                            lessons: []
-                        };
-                        duplicateStudents.push(name);
+                if (duplicateStudentRecords[student.name]) {
+                    // 检查该讲次是否已经添加过
+                    const existingLesson = duplicateStudentRecords[student.name].lessons.find(l => l.lesson === lessonNum);
+                    if (!existingLesson) {
+                        const records = lessonStudents.filter(s => s.name === student.name);
+                        duplicateStudentRecords[student.name].lessons.push({
+                            lesson: lessonNum,
+                            count: records.length,
+                            records: records
+                        });
                     }
-                    // 添加当前讲次的信息
-                    duplicateStudentRecords[name].lessons.push({
-                        lesson: lessonNum,
-                        count: nameCount[name],
-                        records: lessonStudents.filter(s => s.name === name)
-                    });
                 }
             });
         });
@@ -563,25 +578,35 @@ async function generateReports() {
             const renamedData = await showDuplicateStudentDialog();
             console.log('重名处理完成，返回数据:', renamedData);
             if (renamedData) {
-                // 更新数据中的姓名：保留原始姓名用于显示，添加displayName用于文件名
+                const renamedByLessonAndName = {};
+                renamedData.forEach(r => {
+                    const key = `${r.lesson}_${r.originalName}`;
+                    if (!renamedByLessonAndName[key]) {
+                        renamedByLessonAndName[key] = [];
+                    }
+                    renamedByLessonAndName[key].push(r);
+                });
+                
+                const renameCounter = {};
                 allParsedData = allParsedData.map(item => ({
                     lessonNum: item.lessonNum,
                     data: item.data.map(student => {
-                        // 根据讲次和学员信息匹配重命名数据
-                        const renamed = renamedData.find(r => 
-                            r.lesson === item.lessonNum &&
-                            r.originalName === student.name &&
-                            r.objectiveAccuracy === student.objectiveAccuracy &&
-                            r.interactionRate === student.interactionRate &&
-                            r.totalMinutes === student.totalMinutes
-                        );
-                        if (renamed) {
-                            // 原始姓名保持不变（用于显示），displayName用于文件名
-                            return { 
-                                ...student, 
-                                originalName: student.name,
-                                displayName: renamed.newName
-                            };
+                        const key = `${item.lessonNum}_${student.name}`;
+                        const renamedList = renamedByLessonAndName[key];
+                        
+                        if (renamedList && renamedList.length > 0) {
+                            if (!renameCounter[key]) {
+                                renameCounter[key] = 0;
+                            }
+                            const r = renamedList[renameCounter[key]];
+                            if (r) {
+                                renameCounter[key]++;
+                                return { 
+                                    ...student, 
+                                    originalName: student.name,
+                                    displayName: r.newName
+                                };
+                            }
                         }
                         return student;
                     })

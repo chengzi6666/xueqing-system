@@ -1308,38 +1308,53 @@ async function generateReports() {
         // 检测重名学员（同一个表格中出现两个一模一样的学员姓名）
         const allStudents = allParsedData.flatMap(item => item.data);
         
-        // 在每个讲次中检测重名
+        // 检测重名学员：先找出在某个表格内出现2次及以上的姓名（触发重名）
         const duplicateStudents = [];
         const duplicateStudentRecords = {}; // 存储重名学员的详细记录
         
+        // 第一步：在每个讲次内检测出现2次及以上的姓名（这些是触发重名的学员）
+        allParsedData.forEach(item => {
+            const lessonStudents = item.data;
+            
+            // 统计当前讲次中每个姓名的出现次数
+            const nameCount = {};
+            lessonStudents.forEach(student => {
+                const name = student.name;
+                if (!name.includes('学员')) {
+                    nameCount[name] = (nameCount[name] || 0) + 1;
+                }
+            });
+            
+            // 找出当前讲次内出现2次及以上的姓名
+            Object.keys(nameCount).forEach(name => {
+                if (nameCount[name] >= 2 && !duplicateStudentRecords[name]) {
+                    duplicateStudents.push(name);
+                    duplicateStudentRecords[name] = {
+                        name: name,
+                        lessons: []
+                    };
+                }
+            });
+        });
+        
+        // 第二步：为每个触发了重名的学员，收集所有讲次中的所有记录
         allParsedData.forEach(item => {
             const lessonNum = item.lessonNum;
             const lessonStudents = item.data;
             
-            // 统计当前讲次中每个姓名出现的次数
-            const nameCount = {};
+            // 收集该讲次中触发了重名的学员的记录
             lessonStudents.forEach(student => {
-                const name = student.name;
-                nameCount[name] = (nameCount[name] || 0) + 1;
-            });
-            
-            // 找出出现2次以上的姓名（排除"学员"占位符）
-            Object.keys(nameCount).forEach(name => {
-                if (nameCount[name] >= 2 && !name.includes('学员')) {
-                    // 检查是否已经记录过这个重名
-                    if (!duplicateStudentRecords[name]) {
-                        duplicateStudentRecords[name] = {
-                            name: name,
-                            lessons: []
-                        };
-                        duplicateStudents.push(name);
+                if (duplicateStudentRecords[student.name]) {
+                    // 检查该讲次是否已经添加过
+                    const existingLesson = duplicateStudentRecords[student.name].lessons.find(l => l.lesson === lessonNum);
+                    if (!existingLesson) {
+                        const records = lessonStudents.filter(s => s.name === student.name);
+                        duplicateStudentRecords[student.name].lessons.push({
+                            lesson: lessonNum,
+                            count: records.length,
+                            records: records
+                        });
                     }
-                    // 添加当前讲次的信息
-                    duplicateStudentRecords[name].lessons.push({
-                        lesson: lessonNum,
-                        count: nameCount[name],
-                        records: lessonStudents.filter(s => s.name === name)
-                    });
                 }
             });
         });
@@ -1366,6 +1381,7 @@ async function generateReports() {
                 });
                 
                 // 更新数据中的姓名：保留原始姓名用于显示，添加displayName用于文件名
+                const renameCounter = {};
                 allParsedData = allParsedData.map(item => ({
                     lessonNum: item.lessonNum,
                     data: item.data.map(student => {
@@ -1373,22 +1389,18 @@ async function generateReports() {
                         const renamedList = renamedByLessonAndName[key];
                         
                         if (renamedList && renamedList.length > 0) {
-                            // 找到匹配的重命名数据（按顺序匹配，确保每个学员都能被正确重命名）
-                            for (let i = 0; i < renamedList.length; i++) {
-                                const r = renamedList[i];
-                                // 检查数据是否匹配
-                                if (r.objectiveAccuracy === student.objectiveAccuracy &&
-                                    r.interactionRate === student.interactionRate &&
-                                    r.totalMinutes === student.totalMinutes) {
-                                    // 移除已使用的重命名数据，确保不会重复使用
-                                    renamedList.splice(i, 1);
-                                    // 原始姓名保持不变（用于显示），displayName用于文件名
-                                    return { 
-                                        ...student, 
-                                        originalName: student.name,
-                                        displayName: r.newName
-                                    };
-                                }
+                            // 按顺序匹配：用户在弹窗中按顺序输入了新名称，按出现顺序一一对应
+                            if (!renameCounter[key]) {
+                                renameCounter[key] = 0;
+                            }
+                            const r = renamedList[renameCounter[key]];
+                            if (r) {
+                                renameCounter[key]++;
+                                return { 
+                                    ...student, 
+                                    originalName: student.name,
+                                    displayName: r.newName
+                                };
                             }
                         }
                         return student;
@@ -2156,7 +2168,18 @@ function createEmptyState() {
 }
 
 async function downloadSingleReport(studentName, lesson) {
-    const card = document.getElementById(`report-${studentName}-${lesson}`);
+    // studentName 实际是 displayName（由 onclick 传入）
+    // 优先用 ID 查找，找不到则用 dataset 兜底匹配
+    let card = document.getElementById(`report-${studentName}-${lesson}`);
+    if (!card) {
+        const allCards = document.querySelectorAll('.report-image-card');
+        for (const c of allCards) {
+            if (c.dataset.displayName === studentName && c.id.includes(`-${lesson}`)) {
+                card = c;
+                break;
+            }
+        }
+    }
     if (!card) {
         console.error('找不到卡片:', `report-${studentName}-${lesson}`);
         return;
@@ -2279,7 +2302,18 @@ async function downloadSingleReport(studentName, lesson) {
 }
 
 async function downloadOverallReport(studentName) {
-    const card = document.getElementById(`report-${studentName}-overall`);
+    // studentName 实际是 displayName（由 onclick 传入）
+    // 优先用 ID 查找，找不到则用 dataset 兜底匹配
+    let card = document.getElementById(`report-${studentName}-overall`);
+    if (!card) {
+        const allCards = document.querySelectorAll('.report-image-card');
+        for (const c of allCards) {
+            if (c.dataset.displayName === studentName && c.id.includes('-overall')) {
+                card = c;
+                break;
+            }
+        }
+    }
     if (!card) return;
     
     // 获取原始名字用于下载图片内容显示
@@ -2400,12 +2434,30 @@ async function downloadAllReports() {
             let cardId;
             
             if (cardData.isOverall) {
-                cardId = `report-${cardData.student.name}-overall`;
+                cardId = `report-${cardData.displayName}-overall`;
             } else {
-                cardId = `report-${cardData.student.name}-${cardData.lesson}`;
+                cardId = `report-${cardData.displayName}-${cardData.lesson}`;
             }
             
-            const card = document.getElementById(cardId);
+            let card = document.getElementById(cardId);
+            // 兜底：若按 ID 找不到，则用 dataset 匹配
+            if (!card) {
+                const allCards = document.querySelectorAll('.report-image-card');
+                for (const c of allCards) {
+                    const dn = c.dataset.displayName;
+                    if (cardData.isOverall) {
+                        if (dn === cardData.displayName && c.id.includes('-overall')) {
+                            card = c;
+                            break;
+                        }
+                    } else {
+                        if (dn === cardData.displayName && c.id.includes(`-${cardData.lesson}`)) {
+                            card = c;
+                            break;
+                        }
+                    }
+                }
+            }
             if (!card) continue;
             
             // 隐藏下载按钮

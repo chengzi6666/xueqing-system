@@ -948,6 +948,7 @@ async function generateReports() {
         let allParsedData = [];
         let hasStudentPlaceholder = false;
         let allStudentNames = [];
+        let globalStudentIndex = 0;
         
         console.log('开始解析CSV文件...');
         
@@ -961,8 +962,11 @@ async function generateReports() {
             console.log(`解析文件: ${file.name}, 讲次: ${lessonNum}, 数据条数: ${parsedData.length}`);
             console.log('解析的第一条数据:', parsedData[0]);
             
-            // 检查是否有学员名称包含"学员"
+            // 为每个学员分配全局唯一索引
             parsedData.forEach(student => {
+                student._globalIndex = globalStudentIndex++;
+                console.log(`[CSV解析] 学员: ${student.name}, _globalIndex: ${student._globalIndex}, 讲次: ${lessonNum}`);
+                
                 if (student.name && student.name.includes('学员')) {
                     hasStudentPlaceholder = true;
                     allStudentNames.push(student.name);
@@ -977,38 +981,53 @@ async function generateReports() {
         // 检测重名学员（同一个表格中出现两个一模一样的学员姓名）
         const allStudents = allParsedData.flatMap(item => item.data);
         
-        // 在每个讲次中检测重名
+        // 检测重名学员：先找出在某个表格内出现2次及以上的姓名（触发重名）
         const duplicateStudents = [];
         const duplicateStudentRecords = {}; // 存储重名学员的详细记录
         
+        // 第一步：在每个讲次内检测出现2次及以上的姓名（这些是触发重名的学员）
+        allParsedData.forEach(item => {
+            const lessonStudents = item.data;
+            
+            // 统计当前讲次中每个姓名的出现次数
+            const nameCount = {};
+            lessonStudents.forEach(student => {
+                const name = student.name;
+                if (!name.includes('学员')) {
+                    nameCount[name] = (nameCount[name] || 0) + 1;
+                }
+            });
+            
+            // 找出当前讲次内出现2次及以上的姓名
+            Object.keys(nameCount).forEach(name => {
+                if (nameCount[name] >= 2 && !duplicateStudentRecords[name]) {
+                    duplicateStudents.push(name);
+                    duplicateStudentRecords[name] = {
+                        name: name,
+                        lessons: []
+                    };
+                }
+            });
+        });
+        
+        // 第二步：为每个触发了重名的学员，收集所有讲次中的所有记录
         allParsedData.forEach(item => {
             const lessonNum = item.lessonNum;
             const lessonStudents = item.data;
             
-            // 统计当前讲次中每个姓名出现的次数
-            const nameCount = {};
+            // 收集该讲次中触发了重名的学员的记录
             lessonStudents.forEach(student => {
-                const name = student.name;
-                nameCount[name] = (nameCount[name] || 0) + 1;
-            });
-            
-            // 找出出现2次以上的姓名（排除"学员"占位符）
-            Object.keys(nameCount).forEach(name => {
-                if (nameCount[name] >= 2 && !name.includes('学员')) {
-                    // 检查是否已经记录过这个重名
-                    if (!duplicateStudentRecords[name]) {
-                        duplicateStudentRecords[name] = {
-                            name: name,
-                            lessons: []
-                        };
-                        duplicateStudents.push(name);
+                if (duplicateStudentRecords[student.name]) {
+                    // 检查该讲次是否已经添加过
+                    const existingLesson = duplicateStudentRecords[student.name].lessons.find(l => l.lesson === lessonNum);
+                    if (!existingLesson) {
+                        const records = lessonStudents.filter(s => s.name === student.name);
+                        duplicateStudentRecords[student.name].lessons.push({
+                            lesson: lessonNum,
+                            count: records.length,
+                            records: records
+                        });
                     }
-                    // 添加当前讲次的信息
-                    duplicateStudentRecords[name].lessons.push({
-                        lesson: lessonNum,
-                        count: nameCount[name],
-                        records: lessonStudents.filter(s => s.name === name)
-                    });
                 }
             });
         });
@@ -1024,29 +1043,60 @@ async function generateReports() {
             const renamedData = await showDuplicateStudentDialog();
             console.log('重名处理完成，返回数据:', renamedData);
             if (renamedData) {
-                // 更新数据中的姓名：保留原始姓名用于显示，添加displayName用于文件名
+                const renamedByLessonAndName = {};
+                renamedData.forEach(r => {
+                    const key = `${r.lesson}_${r.originalName}`;
+                    if (!renamedByLessonAndName[key]) {
+                        renamedByLessonAndName[key] = [];
+                    }
+                    renamedByLessonAndName[key].push(r);
+                });
+                
                 allParsedData = allParsedData.map(item => ({
                     lessonNum: item.lessonNum,
-                    data: item.data.map(student => {
-                        // 根据讲次和学员信息匹配重命名数据
-                        const renamed = renamedData.find(r => 
-                            r.lesson === item.lessonNum &&
-                            r.originalName === student.name &&
-                            r.objectiveAccuracy === student.objectiveAccuracy &&
-                            r.interactionRate === student.interactionRate &&
-                            r.totalMinutes === student.totalMinutes
-                        );
-                        if (renamed) {
-                            // 原始姓名保持不变（用于显示），displayName用于文件名
-                            return { 
-                                ...student, 
-                                originalName: student.name,
-                                displayName: renamed.newName
-                            };
+                    data: item.data.map((student, studentIndex) => {
+                        const key = `${item.lessonNum}_${student.name}`;
+                        const renamedList = renamedByLessonAndName[key];
+                        
+                        if (renamedList && renamedList.length > 0) {
+                            console.log(`[重名匹配] 查找学员: ${student.name}, _globalIndex: ${student._globalIndex}, 讲次: ${item.lessonNum}`);
+                            console.log(`[重名匹配] 可用重名记录:`, renamedList);
+                            // 优先使用 _globalIndex 匹配（最准确）
+                            const globalIndexMatch = renamedList.find(r => r._globalIndex === student._globalIndex);
+                            if (globalIndexMatch) {
+                                console.log(`[重名匹配] 通过 _globalIndex 匹配成功: ${student.name} -> ${globalIndexMatch.newName}`);
+                                return { 
+                                    ...student, 
+                                    originalName: student.name,
+                                    displayName: globalIndexMatch.newName
+                                };
+                            }
+                            // 如果 _globalIndex 匹配失败，尝试数据匹配（兜底）
+                            const dataMatch = renamedList.find(r => 
+                                r.objectiveAccuracy === student.objectiveAccuracy &&
+                                r.interactionRate === student.interactionRate &&
+                                r.totalMinutes === student.totalMinutes
+                            );
+                            if (dataMatch) {
+                                console.log(`[重名匹配] 通过数据匹配成功: ${student.name} -> ${dataMatch.newName}`);
+                                return { 
+                                    ...student, 
+                                    originalName: student.name,
+                                    displayName: dataMatch.newName
+                                };
+                            }
+                            console.log(`[重名匹配] 匹配失败: ${student.name}, _globalIndex: ${student._globalIndex}`);
                         }
                         return student;
                     })
                 }));
+                
+                console.log('=== 重名处理后数据调试 ===');
+                allParsedData.forEach(item => {
+                    item.data.forEach(student => {
+                        console.log(`  讲次: ${item.lessonNum}, 姓名: ${student.name}, 显示名: ${student.displayName || '无'}, _globalIndex: ${student._globalIndex}`);
+                    });
+                });
             }
         }
         
@@ -1067,13 +1117,24 @@ async function generateReports() {
             
             // 使用用户修改后的数据
             allParsedData = allParsedData.map(item => {
-                const modifiedData = window.currentStudentData.filter(s => 
-                    item.data.some(original => 
+                const modifiedData = item.data.map(original => {
+                    const matched = window.currentStudentData.find(s => 
                         original.objectiveAccuracy === s.objectiveAccuracy &&
                         original.interactionRate === s.interactionRate &&
                         original.totalMinutes === s.totalMinutes
-                    )
-                );
+                    );
+                    if (matched) {
+                        const result = { ...matched };
+                        if (original.displayName) {
+                            result.displayName = original.displayName;
+                        }
+                        if (original.originalName) {
+                            result.originalName = original.originalName;
+                        }
+                        return result;
+                    }
+                    return original;
+                });
                 return { lessonNum: item.lessonNum, data: modifiedData };
             });
         }
@@ -1388,15 +1449,21 @@ function showDuplicateStudentDialog() {
         duplicates.forEach(dup => {
             dup.lessons.forEach(lessonInfo => {
                 lessonInfo.records.forEach((record, recordIndex) => {
+                    // 使用原始记录的 _globalIndex，不要覆盖它
+                    const globalIndex = record._globalIndex || allRenameRecords.length;
                     allRenameRecords.push({
                         originalName: dup.name,
                         lesson: lessonInfo.lesson,
                         record: record,
-                        index: allRenameRecords.length
+                        index: globalIndex,
+                        _globalIndex: globalIndex
                     });
                 });
             });
         });
+        
+        // 保存 allRenameRecords 以便确认时使用
+        window.allRenameRecords = allRenameRecords;
         
         // 创建弹窗
         const dialog = document.createElement('div');
@@ -1414,15 +1481,11 @@ function showDuplicateStudentDialog() {
                                 <div style="margin-left: 10px; margin-top: 10px;">
                                     <span style="font-weight: bold; color: #666;">📋 ${lessonInfo.lesson}（出现 ${lessonInfo.count} 次）</span>
                                     ${lessonInfo.records.map((record, recordIndex) => {
-                                        const globalIndex = allRenameRecords.findIndex(r => 
-                                            r.originalName === dup.name && 
-                                            r.lesson === lessonInfo.lesson && 
-                                            r.record.objectiveAccuracy === record.objectiveAccuracy &&
-                                            r.record.interactionRate === record.interactionRate
-                                        );
+                                        // 直接使用 record._globalIndex，这是构建 allRenameRecords 时设置的
+                                        const globalIndex = record._globalIndex;
                                         return `
                                             <div class="rename-row" style="display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px; background: white; border-radius: 4px;">
-                                                <span class="record-data" style="flex: 1; font-size: 13px;">正确率：${record.objectiveAccuracy || 0}% | 参与率：${record.interactionRate || 0}% | 时长：${record.totalMinutes || 0}分钟</span>
+                                                <span class="record-data" style="flex: 1; font-size: 13px;">正确率：${record.objectiveAccuracy || 0}% | 参与率：${record.interactionRate || 0}% | 时长：${record.totalMinutes || 0}分钟 | 索引：${globalIndex}</span>
                                                 <input type="text" 
                                                     class="rename-input"
                                                     data-original="${dup.name}"
@@ -1458,30 +1521,28 @@ function showDuplicateStudentDialog() {
         window.confirmDuplicateRename = function() {
             const renamedData = [];
             const inputs = dialog.querySelectorAll('.rename-input');
+            const allRenameRecords = window.allRenameRecords;
             
             inputs.forEach(input => {
                 const originalName = input.dataset.original;
                 const newName = input.value.trim();
                 const lesson = input.dataset.lesson;
+                const globalIndex = parseInt(input.dataset.globalIndex);
                 
-                if (newName) {
-                    // 找到对应的记录
-                    const dup = duplicates.find(d => d.name === originalName);
-                    if (dup) {
-                        const lessonInfo = dup.lessons.find(l => l.lesson === lesson);
-                        if (lessonInfo) {
-                            // 找到对应的原始记录
-                            lessonInfo.records.forEach(record => {
-                                renamedData.push({
-                                    originalName: originalName,
-                                    newName: newName,
-                                    lesson: lesson,
-                                    objectiveAccuracy: record.objectiveAccuracy,
-                                    interactionRate: record.interactionRate,
-                                    totalMinutes: record.totalMinutes
-                                });
-                            });
-                        }
+                if (newName && !isNaN(globalIndex)) {
+                    // 使用 find 查找对应的记录，而不是直接索引
+                    const renameRecord = allRenameRecords.find(r => r._globalIndex === globalIndex);
+                    if (renameRecord) {
+                        const record = renameRecord.record;
+                        renamedData.push({
+                            originalName: originalName,
+                            newName: newName,
+                            lesson: lesson,
+                            objectiveAccuracy: record.objectiveAccuracy,
+                            interactionRate: record.interactionRate,
+                            totalMinutes: record.totalMinutes,
+                            _globalIndex: globalIndex
+                        });
                     }
                 }
             });
@@ -1616,6 +1677,13 @@ function renderReportCards() {
     const container = document.getElementById('reports-container');
     allReportCards = [];
     
+    console.log('=== renderReportCards 调试 ===');
+    Object.entries(studentData).forEach(([lesson, students]) => {
+        students.forEach(student => {
+            console.log(`  讲次: ${lesson}, 姓名: ${student.name}, displayName: ${student.displayName || '无'}, originalName: ${student.originalName || '无'}`);
+        });
+    });
+    
     const cards = [];
     if (currentMode === 'single') {
         // 单讲评语
@@ -1671,7 +1739,7 @@ function renderReportCards() {
                 const comment = generateComment(student, lessonData, lesson);
                 // 使用displayName（如果存在）作为文件名，否则使用name
                 const displayName = student.displayName || student.name;
-                const cardData = { student, lesson, lessonData, comment, displayName };
+                const cardData = { student, lesson, lessonData, comment, displayName, _globalIndex: student._globalIndex };
                 allReportCards.push(cardData);
                 cards.push(createReportCard(cardData));
             });
@@ -1681,15 +1749,16 @@ function renderReportCards() {
         const studentMap = {};
         Object.entries(studentData).forEach(([lesson, students]) => {
             students.forEach(student => {
-                // 使用displayName（如果存在）作为文件名，否则使用name
+                // 使用displayName和_globalIndex组合作为key，确保重名学员分开处理
                 const displayName = student.displayName || student.name;
-                const key = displayName; // 用displayName作为map的key
+                const key = `${displayName}_${student._globalIndex || 0}`;
                 
                 if (!studentMap[key]) {
                     studentMap[key] = { 
                         name: student.name, // 原始姓名用于显示
                         displayName: displayName, // 区分后姓名用于文件名
-                        records: [] 
+                        records: [],
+                        _globalIndex: student._globalIndex || 0
                     };
                 }
                 studentMap[key].records.push({ lesson, ...student });
@@ -1707,6 +1776,8 @@ function renderReportCards() {
             const keyPointsSummary = generateKeyPointsSummary(student.records);
             const comment = generateOverallComment(student.name, avgAccuracy, avgTotalTime, avgParticipation, completedLessons, keyPointsSummary);
             
+            const _globalIndex = student._globalIndex || 0;
+            console.log(`[卡片渲染] 创建总体报告卡片: displayName=${student.displayName}, _globalIndex=${_globalIndex}, records=${student.records.length}`);
             const cardData = { 
                 student, 
                 displayName: student.displayName,
@@ -1716,7 +1787,8 @@ function renderReportCards() {
                 completedLessons, 
                 keyPointsSummary, 
                 comment, 
-                isOverall: true 
+                isOverall: true,
+                _globalIndex: _globalIndex
             };
             allReportCards.push(cardData);
             cards.push(createOverallReportCard(cardData));
@@ -1734,15 +1806,33 @@ function createEmptyState() {
     `;
 }
 
-async function downloadSingleReport(studentName, lesson) {
-    const card = document.getElementById(`report-${studentName}-${lesson}`);
+async function downloadSingleReport(studentName, lesson, globalIndex) {
+    let card;
+    if (globalIndex !== undefined) {
+        card = document.getElementById(`report-${studentName}-${lesson}-${globalIndex}`);
+    } else {
+        const cards = document.querySelectorAll(`[id^="report-${studentName}-${lesson}-"]`);
+        card = cards.length > 0 ? cards[0] : null;
+    }
     if (!card) return;
     
     try {
+        // 获取原始名字
+        const originalName = card.dataset.originalName || studentName;
+        
         // 隐藏下载按钮
         const downloadBtn = card.querySelector('.download-btn-no-print');
         if (downloadBtn) {
             downloadBtn.style.display = 'none';
+        }
+        
+        // 临时将学员名字改为原始名字（用于下载图片内容显示）
+        // 截图完成后会恢复为displayName
+        const studentNameEl = card.querySelector('.report-student-info h3');
+        const currentDisplayName = studentNameEl ? studentNameEl.textContent : '';
+        
+        if (studentNameEl && currentDisplayName !== originalName) {
+            studentNameEl.textContent = originalName;
         }
         
         // 等待所有图片加载完成
@@ -1753,23 +1843,18 @@ async function downloadSingleReport(studentName, lesson) {
                 return;
             }
             let loadedCount = 0;
+            const checkLoaded = () => {
+                loadedCount++;
+                if (loadedCount === images.length) {
+                    setTimeout(resolve, 100);
+                }
+            };
             images.forEach(img => {
                 if (img.complete) {
-                    loadedCount++;
+                    checkLoaded();
                 } else {
-                    img.onload = () => {
-                        loadedCount++;
-                        if (loadedCount === images.length) {
-                            // 等待一小段时间确保渲染完成
-                            setTimeout(resolve, 100);
-                        }
-                    };
-                    img.onerror = () => {
-                        loadedCount++;
-                        if (loadedCount === images.length) {
-                            setTimeout(resolve, 100);
-                        }
-                    };
+                    img.addEventListener('load', checkLoaded, { once: true });
+                    img.addEventListener('error', checkLoaded, { once: true });
                 }
             });
             if (loadedCount === images.length) {
@@ -1792,6 +1877,11 @@ async function downloadSingleReport(studentName, lesson) {
             letterRendering: true,
             useForeignObjectRendering: false
         });
+        
+        // 恢复学员名字显示（保持区分后的名字）
+        if (studentNameEl) {
+            studentNameEl.textContent = currentDisplayName;
+        }
         
         // 恢复下载按钮显示
         if (downloadBtn) {
@@ -1804,19 +1894,42 @@ async function downloadSingleReport(studentName, lesson) {
         link.click();
     } catch (e) {
         console.error('下载失败:', e);
+        // 恢复学员名字显示（保持区分后的名字）
+        const studentNameEl = card.querySelector('.report-student-info h3');
+        if (studentNameEl) {
+            studentNameEl.textContent = currentDisplayName || studentName;
+        }
         alert('下载失败，请重试');
     }
 }
 
-async function downloadOverallReport(studentName) {
-    const card = document.getElementById(`report-${studentName}-overall`);
+async function downloadOverallReport(studentName, globalIndex) {
+    let card;
+    if (globalIndex !== undefined) {
+        card = document.getElementById(`report-${studentName}-overall-${globalIndex}`);
+    } else {
+        const cards = document.querySelectorAll(`[id^="report-${studentName}-overall-"]`);
+        card = cards.length > 0 ? cards[0] : null;
+    }
     if (!card) return;
     
     try {
+        // 获取原始名字
+        const originalName = card.dataset.originalName || studentName;
+        
         // 隐藏下载按钮
         const downloadBtn = card.querySelector('.download-btn-no-print');
         if (downloadBtn) {
             downloadBtn.style.display = 'none';
+        }
+        
+        // 临时将学员名字改为原始名字（用于下载图片内容显示）
+        // 截图完成后会恢复为displayName
+        const studentNameEl = card.querySelector('.report-student-info h3');
+        const currentDisplayName = studentNameEl ? studentNameEl.textContent : '';
+        
+        if (studentNameEl && currentDisplayName !== originalName) {
+            studentNameEl.textContent = originalName;
         }
         
         // 等待所有图片加载完成
@@ -1827,22 +1940,18 @@ async function downloadOverallReport(studentName) {
                 return;
             }
             let loadedCount = 0;
+            const checkLoaded = () => {
+                loadedCount++;
+                if (loadedCount === images.length) {
+                    setTimeout(resolve, 100);
+                }
+            };
             images.forEach(img => {
                 if (img.complete) {
-                    loadedCount++;
+                    checkLoaded();
                 } else {
-                    img.onload = () => {
-                        loadedCount++;
-                        if (loadedCount === images.length) {
-                            setTimeout(resolve, 100);
-                        }
-                    };
-                    img.onerror = () => {
-                        loadedCount++;
-                        if (loadedCount === images.length) {
-                            setTimeout(resolve, 100);
-                        }
-                    };
+                    img.addEventListener('load', checkLoaded, { once: true });
+                    img.addEventListener('error', checkLoaded, { once: true });
                 }
             });
             if (loadedCount === images.length) {
@@ -1866,6 +1975,11 @@ async function downloadOverallReport(studentName) {
             useForeignObjectRendering: false
         });
         
+        // 恢复学员名字显示（保持区分后的名字）
+        if (studentNameEl) {
+            studentNameEl.textContent = currentDisplayName;
+        }
+        
         // 恢复下载按钮显示
         if (downloadBtn) {
             downloadBtn.style.display = 'block';
@@ -1877,6 +1991,11 @@ async function downloadOverallReport(studentName) {
         link.click();
     } catch (e) {
         console.error('下载失败:', e);
+        // 恢复学员名字显示（保持区分后的名字）
+        const studentNameEl = card.querySelector('.report-student-info h3');
+        if (studentNameEl) {
+            studentNameEl.textContent = currentDisplayName || studentName;
+        }
         alert('下载失败，请重试');
     }
 }
@@ -1894,23 +2013,47 @@ async function downloadAllReports() {
     try {
         const zip = new JSZip();
         
+        console.log('=== downloadAllReports 调试 ===');
+        console.log(`allReportCards 长度: ${allReportCards.length}`);
+        allReportCards.forEach((card, index) => {
+            console.log(`  ${index}: displayName=${card.displayName}, lesson=${card.lesson || 'overall'}, isOverall=${card.isOverall}`);
+        });
+        
         for (let i = 0; i < allReportCards.length; i++) {
             const cardData = allReportCards[i];
             let cardId;
             
             if (cardData.isOverall) {
-                cardId = `report-${cardData.student.name}-overall`;
+                cardId = `report-${cardData.displayName}-overall-${cardData._globalIndex || 0}`;
             } else {
-                cardId = `report-${cardData.student.name}-${cardData.lesson}`;
+                cardId = `report-${cardData.displayName}-${cardData.lesson}-${cardData._globalIndex || 0}`;
             }
             
+            console.log(`[下载] 查找卡片: index=${i}, displayName=${cardData.displayName}, _globalIndex=${cardData._globalIndex}, cardId=${cardId}`);
+            
             const card = document.getElementById(cardId);
-            if (!card) continue;
+            if (!card) {
+                console.log(`[下载] ❌ 找不到卡片: ${cardId}`);
+                continue;
+            }
+            console.log(`[下载] ✅ 找到卡片: ${cardId}`);
+            
+            // 获取原始名字
+            const originalName = card.dataset.originalName || cardData.displayName;
             
             // 隐藏下载按钮
             const downloadBtnCard = card.querySelector('.download-btn-no-print');
             if (downloadBtnCard) {
                 downloadBtnCard.style.display = 'none';
+            }
+            
+            // 临时将学员名字改为原始名字（用于下载图片内容显示）
+            // 截图完成后会恢复为displayName
+            const studentNameEl = card.querySelector('.report-student-info h3');
+            const currentDisplayName = studentNameEl ? studentNameEl.textContent : '';
+            
+            if (studentNameEl && currentDisplayName !== originalName) {
+                studentNameEl.textContent = originalName;
             }
             
             // 等待所有图片加载完成
@@ -1921,22 +2064,18 @@ async function downloadAllReports() {
                     return;
                 }
                 let loadedCount = 0;
+                const checkLoaded = () => {
+                    loadedCount++;
+                    if (loadedCount === images.length) {
+                        setTimeout(resolve, 100);
+                    }
+                };
                 images.forEach(img => {
                     if (img.complete) {
-                        loadedCount++;
+                        checkLoaded();
                     } else {
-                        img.onload = () => {
-                            loadedCount++;
-                            if (loadedCount === images.length) {
-                                setTimeout(resolve, 100);
-                            }
-                        };
-                        img.onerror = () => {
-                            loadedCount++;
-                            if (loadedCount === images.length) {
-                                setTimeout(resolve, 100);
-                            }
-                        };
+                        img.addEventListener('load', checkLoaded, { once: true });
+                        img.addEventListener('error', checkLoaded, { once: true });
                     }
                 });
                 if (loadedCount === images.length) {
@@ -1954,6 +2093,11 @@ async function downloadAllReports() {
                 letterRendering: true,
                 useForeignObjectRendering: false
             });
+            
+            // 恢复学员名字显示（保持区分后的名字）
+            if (studentNameEl) {
+                studentNameEl.textContent = currentDisplayName;
+            }
             
             // 恢复下载按钮显示
             if (downloadBtnCard) {
@@ -1980,6 +2124,10 @@ async function downloadAllReports() {
         alert('所有报告已打包完成！');
     } catch (e) {
         console.error('打包下载失败:', e);
+        const studentNameEl = card?.querySelector('.report-student-info h3');
+        if (studentNameEl) {
+            studentNameEl.textContent = originalDisplayName || cardData?.displayName;
+        }
         downloadBtn.textContent = '📥 一键下载所有报告';
         downloadBtn.disabled = false;
         alert('下载失败，请重试');
@@ -2152,7 +2300,7 @@ function generateOverallComment(name, avgAccuracy, avgTotalTime, avgParticipatio
 }
 
 function createReportCard(cardData) {
-    const { student, lesson, lessonData, comment, displayName } = cardData;
+    const { student, lesson, lessonData, comment, displayName, _globalIndex } = cardData;
     
     // 构建课程图片HTML
     let courseImageHtml = '';
@@ -2161,12 +2309,12 @@ function createReportCard(cardData) {
     }
     
     return `
-        <div class="report-image-card" id="report-${student.name}-${lesson}">
+        <div class="report-image-card" id="report-${displayName}-${lesson}-${_globalIndex || 0}" data-original-name="${student.name}">
             <div class="report-header-section">
                 <div class="report-student-info">
                     <div class="report-avatar">👨‍🎓</div>
                     <div>
-                        <h3>${student.name}</h3>
+                        <h3>${displayName}</h3>
                         <p class="report-title" contenteditable="true">${outlineData[currentSubject].subject} ${currentLevel} - ${lesson}</p>
                     </div>
                 </div>
@@ -2193,7 +2341,7 @@ function createReportCard(cardData) {
             
             <div class="report-comment-section">
                 <h4 class="comment-title" data-teacher-name="${configData.teacherName}">📝 ${configData.teacherName.replace(/老师$/, '')}老师评语</h4>
-                <div class="comment-editable" contenteditable="true" id="comment-${student.name}-${lesson}">${comment}</div>
+                <div class="comment-editable" contenteditable="true" id="comment-${displayName}-${lesson}">${comment}</div>
             </div>
             
             <div class="report-course-section">
@@ -2205,17 +2353,17 @@ function createReportCard(cardData) {
             </div>
             
             <div class="report-footer">
-                <span class="footer-brand editable-footer" contenteditable="true" data-student="${student.name}" data-lesson="${lesson}" onblur="updateAllFooterText(this)">${configData.footerText}</span>
+                <span class="footer-brand editable-footer" contenteditable="true" data-student="${displayName}" data-lesson="${lesson}" onblur="updateAllFooterText(this)">${configData.footerText}</span>
                 <span>${formatDate(new Date())}</span>
             </div>
             
-            <button class="download-btn-no-print" onclick="downloadSingleReport('${displayName}', '${lesson}')">📥 下载</button>
+            <button class="download-btn-no-print" onclick="downloadSingleReport('${displayName}', '${lesson}', ${_globalIndex || 0})">📥 下载</button>
         </div>
     `;
 }
 
 function createOverallReportCard(cardData) {
-    const { student, displayName, avgAccuracy, avgTotalTime, avgParticipation, completedLessons, keyPointsSummary, comment } = cardData;
+    const { student, displayName, avgAccuracy, avgTotalTime, avgParticipation, completedLessons, keyPointsSummary, comment, _globalIndex } = cardData;
     
     // 获取用户选择的图片
     let courseImagesHtml = '';
@@ -2274,12 +2422,12 @@ function createOverallReportCard(cardData) {
     }
     
     return `
-        <div class="report-image-card" id="report-${student.name}-overall">
+        <div class="report-image-card" id="report-${displayName}-overall-${_globalIndex || 0}" data-original-name="${student.name}">
             <div class="report-header-section">
                 <div class="report-student-info">
                     <div class="report-avatar">👨‍🎓</div>
                     <div>
-                        <h3>${student.name}</h3>
+                        <h3>${displayName}</h3>
                         <p class="report-title" contenteditable="true">${outlineData[currentSubject].subject} ${currentLevel} - 综合学习报告</p>
                     </div>
                 </div>
@@ -2306,7 +2454,7 @@ function createOverallReportCard(cardData) {
             
             <div class="report-comment-section">
                 <h4 class="comment-title" data-teacher-name="${configData.teacherName}">📝 ${configData.teacherName.replace(/老师$/, '')}老师评语</h4>
-                <div class="comment-editable" contenteditable="true" id="comment-${student.name}-overall">${comment}</div>
+                <div class="comment-editable" contenteditable="true" id="comment-${displayName}-overall">${comment}</div>
             </div>
             
             <div class="report-course-section">
@@ -2316,11 +2464,11 @@ function createOverallReportCard(cardData) {
             </div>
             
             <div class="report-footer">
-                <span class="footer-brand editable-footer" contenteditable="true" data-student="${student.name}" data-lesson="overall" onblur="updateAllFooterText(this)">${configData.footerText}</span>
+                <span class="footer-brand editable-footer" contenteditable="true" data-student="${displayName}" data-lesson="overall" onblur="updateAllFooterText(this)">${configData.footerText}</span>
                 <span>${formatDate(new Date())}</span>
             </div>
             
-            <button class="download-btn-no-print" onclick="downloadOverallReport('${displayName}')">📥 下载</button>
+            <button class="download-btn-no-print" onclick="downloadOverallReport('${displayName}', ${_globalIndex || 0})">📥 下载</button>
         </div>
     `;
 }
