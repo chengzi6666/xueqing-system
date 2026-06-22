@@ -11,8 +11,8 @@ RUN npm install --production
 # Copy all source code
 COPY . .
 
-# Run prepare script
-RUN npm run prepare
+# Run prepare script (after source is copied)
+RUN node prepare-deploy.js
 
 # Expose port (Railway uses PORT env var)
 EXPOSE 3000
